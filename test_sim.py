@@ -20,6 +20,7 @@ import argparse
 import json
 import os
 import signal
+from pathlib import Path
 import subprocess
 import sys
 import time
@@ -193,9 +194,9 @@ def self_test():
         print(f"  {G}✓ PASS{X} — Legitimate login was logged")
 
     # Cleanup
-    for f in [FAKE_LOG, TEST_CONFIG, "/tmp/sshguardian_test.log"]:
+    for f in (FAKE_LOG, TEST_CONFIG, "/tmp/sshguardian_test.log"):
         if os.path.isfile(f):
-            os.remove(f)
+            Path(f).unlink()
 
     print(f"\n  {G}{B}Self-test complete.{X}\n")
 
