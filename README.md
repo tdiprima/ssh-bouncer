@@ -79,7 +79,7 @@ Enables deterministic validation before production deployment.
 
 ## 🛠 Tech Stack
 
-* Python 3.8+
+* Python 3.11+
 * Linux (Ubuntu 20.04+ recommended)
 * systemd
 * UFW / iptables (optional)
