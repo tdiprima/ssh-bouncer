@@ -56,8 +56,8 @@ When the threshold is exceeded:
 ## 🚀 Installation
 
 ```bash
-git clone https://github.com/tdiprima/SSHGuardian
-cd SSHGuardian
+git clone https://github.com/tdiprima/SSH-Guardian
+cd SSH-Guardian
 sudo python3 install.py
 sudo systemctl enable sshguardian
 sudo systemctl start sshguardian
@@ -98,7 +98,7 @@ Enables deterministic validation before production deployment.
 
 ## ⚠️ Disclaimer
 
-This software is provided as-is, without warranty.
+This software is provided as-is, without warranty.  
 Always test in a staging or controlled environment before deploying to production infrastructure.
 
 ---
