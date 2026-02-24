@@ -13,6 +13,8 @@ import os
 import shutil
 import subprocess
 import sys
+from contextlib import suppress
+from pathlib import Path
 
 # ─── Paths ────────────────────────────────────────────────────────────────────
 INSTALL_DIR = "/opt/sshguardian"
@@ -97,7 +99,7 @@ def ask(prompt, default=""):
     """Prompt user with a default value."""
     if default:
         val = input(f"  {prompt} [{default}]: ").strip()
-        return val if val else default
+        return val or default
     return input(f"  {prompt}: ").strip()
 
 
@@ -116,20 +118,16 @@ def install():
 
     print(f"{B}Step 1: Configuration{X}\n")
 
-    config = dict(DEFAULT_CONFIG)
+    config = DEFAULT_CONFIG.copy()
 
     # Threshold
     t = ask("Failed login threshold before alert", str(config["threshold"]))
-    try:
+    with suppress(ValueError):
         config["threshold"] = int(t)
-    except ValueError:
-        pass
 
     w = ask("Detection window (seconds)", str(config["window_seconds"]))
-    try:
+    with suppress(ValueError):
         config["window_seconds"] = int(w)
-    except ValueError:
-        pass
 
     # Whitelist
     wl = ask("Whitelisted IPs (comma-separated)", ", ".join(config["whitelist"]))
@@ -142,10 +140,8 @@ def install():
         method = ask("Block method (ufw / iptables)", config["block_method"])
         config["block_method"] = method if method in ("ufw", "iptables") else "ufw"
         dur = ask("Block duration (minutes)", str(config["block_duration_minutes"]))
-        try:
+        with suppress(ValueError):
             config["block_duration_minutes"] = int(dur)
-        except ValueError:
-            pass
 
     # Email
     print()
@@ -154,10 +150,8 @@ def install():
         config["email_to"] = ask("Alert recipient email")
         config["smtp_server"] = ask("SMTP server", config["smtp_server"])
         port = ask("SMTP port", str(config["smtp_port"]))
-        try:
+        with suppress(ValueError):
             config["smtp_port"] = int(port)
-        except ValueError:
-            pass
         config["smtp_tls"] = ask_yn("Use STARTTLS?", False)
         config["smtp_user"] = ask("SMTP username (blank for none)", "")
         if config["smtp_user"]:
@@ -167,9 +161,9 @@ def install():
     # ── Create directories ──
     print(f"\n{B}Step 2: Installing files{X}\n")
 
-    os.makedirs(INSTALL_DIR, exist_ok=True)
-    os.makedirs(CONFIG_DIR, exist_ok=True)
-    os.makedirs(STATE_DIR, exist_ok=True)
+    Path(INSTALL_DIR).mkdir(parents=True, exist_ok=True)
+    Path(CONFIG_DIR).mkdir(parents=True, exist_ok=True)
+    Path(STATE_DIR).mkdir(parents=True, exist_ok=True)
 
     # Copy script
     src = os.path.join(os.path.dirname(os.path.abspath(__file__)), SCRIPT_NAME)
@@ -184,7 +178,7 @@ def install():
         sys.exit(1)
 
     # Write config (don't overwrite existing without asking)
-    if os.path.isfile(CONFIG_FILE):
+    if Path(CONFIG_FILE).is_file():
         if ask_yn(f"  Config already exists at {CONFIG_FILE}. Overwrite?", False):
             with open(CONFIG_FILE, "w") as f:
                 json.dump(config, f, indent=2)
@@ -198,8 +192,7 @@ def install():
         print(f"  {G}✓{X}  Config created: {CONFIG_FILE} (mode 600)")
 
     # Write systemd unit
-    with open(SYSTEMD_FILE, "w") as f:
-        f.write(SYSTEMD_UNIT)
+    Path(SYSTEMD_FILE).write_text(SYSTEMD_UNIT)
     print(f"  {G}✓{X}  Systemd service: {SYSTEMD_FILE}")
 
     subprocess.run(["systemctl", "daemon-reload"], capture_output=True)
@@ -233,18 +226,18 @@ def uninstall():
     print(f"  {G}✓{X}  Service stopped and disabled")
 
     # Remove files
-    for path in [SYSTEMD_FILE]:
-        if os.path.isfile(path):
-            os.remove(path)
+    for path in (SYSTEMD_FILE,):
+        if Path(path).is_file():
+            Path(path).unlink()
             print(f"  {G}✓{X}  Removed {path}")
 
     subprocess.run(["systemctl", "daemon-reload"], capture_output=True)
 
-    if os.path.isdir(INSTALL_DIR):
+    if Path(INSTALL_DIR).is_dir():
         shutil.rmtree(INSTALL_DIR)
         print(f"  {G}✓{X}  Removed {INSTALL_DIR}")
 
-    if os.path.isdir(STATE_DIR):
+    if Path(STATE_DIR).is_dir():
         shutil.rmtree(STATE_DIR)
         print(f"  {G}✓{X}  Removed {STATE_DIR}")
 
