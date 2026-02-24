@@ -7,12 +7,12 @@ Usage:
     sudo python3 install.py --uninstall
 """
 
-import os
-import sys
+import argparse
 import json
+import os
 import shutil
 import subprocess
-import argparse
+import sys
 
 # ─── Paths ────────────────────────────────────────────────────────────────────
 INSTALL_DIR = "/opt/sshguardian"
@@ -76,18 +76,20 @@ WantedBy=multi-user.target
 
 
 def banner():
-    print(f"""
+    print(
+        f"""
 {B}{C}╔══════════════════════════════════════════════════╗
 ║          SSHGuardian  —  Installer               ║
 ║    Real-Time SSH Intrusion Detection for Linux    ║
 ╚══════════════════════════════════════════════════╝{X}
-""")
+"""
+    )
 
 
 def check_root():
     if os.geteuid() != 0:
         print(f"{R}Error: installer must be run as root.{X}")
-        print(f"  Try: sudo python3 install.py")
+        print("  Try: sudo python3 install.py")
         sys.exit(1)
 
 
@@ -209,9 +211,13 @@ def install():
     print(f"  Enable on boot:      {C}sudo systemctl enable sshguardian{X}")
     print(f"  Check status:        {C}sudo systemctl status sshguardian{X}")
     print(f"  View live log:       {C}sudo journalctl -u sshguardian -f{X}")
-    print(f"  View threat table:   {C}sudo python3 {INSTALL_DIR}/{SCRIPT_NAME} --status{X}")
+    print(
+        f"  View threat table:   {C}sudo python3 {INSTALL_DIR}/{SCRIPT_NAME} --status{X}"
+    )
     print(f"  Edit config:         {C}sudo nano {CONFIG_FILE}{X}")
-    print(f"  Send SIGUSR1 for live status:  {C}sudo kill -USR1 $(pidof -x sshguardian.py){X}")
+    print(
+        f"  Send SIGUSR1 for live status:  {C}sudo kill -USR1 $(pidof -x sshguardian.py){X}"
+    )
     print(f"\n  {G}{B}Installation complete!{X}\n")
 
 

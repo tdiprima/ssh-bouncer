@@ -16,16 +16,14 @@ Usage:
     sudo python3 test_sim.py --self-test
 """
 
-import os
-import sys
-import json
-import time
 import argparse
-import tempfile
-import subprocess
+import json
+import os
 import signal
+import subprocess
+import sys
+import time
 from datetime import datetime
-
 
 # ─── Colors ───────────────────────────────────────────────────────────────────
 G = "\033[92m"
@@ -74,38 +72,53 @@ def run_simulation():
 
     print(f"\n{B}{C}═══ SSHGuardian Test Simulation ═══{X}\n")
     print(f"  Writing to: {FAKE_LOG}")
-    print(f"  Threshold:  3 failures in 60s\n")
+    print("  Threshold:  3 failures in 60s\n")
 
     scenarios = [
-        ("Scenario 1: Slow probe (below threshold)", [
-            ("admin", "10.0.0.50", False),
-            ("root",  "10.0.0.50", False),
-        ]),
-        ("Scenario 2: Brute-force burst (exceeds threshold)", [
-            ("root",    "192.168.1.100", False),
-            ("admin",   "192.168.1.100", False),
-            ("ubuntu",  "192.168.1.100", False),
-            ("test",    "192.168.1.100", False),
-            ("deploy",  "192.168.1.100", False),
-        ]),
-        ("Scenario 3: Multiple attackers", [
-            ("root",   "203.0.113.5", False),
-            ("admin",  "203.0.113.5", False),
-            ("root",   "198.51.100.7", False),
-            ("root",   "203.0.113.5", False),
-            ("admin",  "198.51.100.7", False),
-            ("root",   "198.51.100.7", False),
-            ("test",   "198.51.100.7", False),
-        ]),
-        ("Scenario 4: Legitimate login mixed in", [
-            ("deploy", "10.0.0.1", True),
-        ]),
-        ("Scenario 5: Whitelisted IP (should be ignored)", [
-            ("root",  "127.0.0.1", False),
-            ("root",  "127.0.0.1", False),
-            ("root",  "127.0.0.1", False),
-            ("root",  "127.0.0.1", False),
-        ]),
+        (
+            "Scenario 1: Slow probe (below threshold)",
+            [
+                ("admin", "10.0.0.50", False),
+                ("root", "10.0.0.50", False),
+            ],
+        ),
+        (
+            "Scenario 2: Brute-force burst (exceeds threshold)",
+            [
+                ("root", "192.168.1.100", False),
+                ("admin", "192.168.1.100", False),
+                ("ubuntu", "192.168.1.100", False),
+                ("test", "192.168.1.100", False),
+                ("deploy", "192.168.1.100", False),
+            ],
+        ),
+        (
+            "Scenario 3: Multiple attackers",
+            [
+                ("root", "203.0.113.5", False),
+                ("admin", "203.0.113.5", False),
+                ("root", "198.51.100.7", False),
+                ("root", "203.0.113.5", False),
+                ("admin", "198.51.100.7", False),
+                ("root", "198.51.100.7", False),
+                ("test", "198.51.100.7", False),
+            ],
+        ),
+        (
+            "Scenario 4: Legitimate login mixed in",
+            [
+                ("deploy", "10.0.0.1", True),
+            ],
+        ),
+        (
+            "Scenario 5: Whitelisted IP (should be ignored)",
+            [
+                ("root", "127.0.0.1", False),
+                ("root", "127.0.0.1", False),
+                ("root", "127.0.0.1", False),
+                ("root", "127.0.0.1", False),
+            ],
+        ),
     ]
 
     with open(FAKE_LOG, "a") as log:
@@ -115,14 +128,14 @@ def run_simulation():
                 line = sim_line(user, ip, success)
                 log.write(line + "\n")
                 log.flush()
-                tag = f"{G}✓ OK{X}" if success else f"  FAIL"
+                tag = f"{G}✓ OK{X}" if success else "  FAIL"
                 print(f"    {tag}  {user}@{ip}")
                 time.sleep(0.4)
             print()
             time.sleep(1)
 
     print(f"  {B}{G}Simulation complete.{X}")
-    print(f"  Check SSHGuardian output for detections.\n")
+    print("  Check SSHGuardian output for detections.\n")
 
 
 def self_test():
@@ -137,7 +150,7 @@ def self_test():
     script_dir = os.path.dirname(os.path.abspath(__file__))
     guardian_path = os.path.join(script_dir, "sshguardian.py")
 
-    print(f"  Starting SSHGuardian (dry-run)...")
+    print("  Starting SSHGuardian (dry-run)...")
     proc = subprocess.Popen(
         [sys.executable, guardian_path, "-c", TEST_CONFIG, "--dry-run"],
         stdout=subprocess.PIPE,
@@ -189,8 +202,9 @@ def self_test():
 
 def main():
     parser = argparse.ArgumentParser(description="SSHGuardian Test Simulator")
-    parser.add_argument("--self-test", action="store_true",
-                        help="Run SSHGuardian + simulation together")
+    parser.add_argument(
+        "--self-test", action="store_true", help="Run SSHGuardian + simulation together"
+    )
     args = parser.parse_args()
 
     if args.self_test:

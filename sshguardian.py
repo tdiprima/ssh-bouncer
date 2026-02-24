@@ -12,18 +12,17 @@ Usage:
     sudo python3 sshguardian.py --status           # Show current threat table
 """
 
+import argparse
+import json
+import logging
 import os
+import re
+import signal
+import subprocess
 import sys
 import time
-import json
-import signal
-import logging
-import argparse
-import subprocess
-import re
-from datetime import datetime, timedelta
 from collections import defaultdict
-from pathlib import Path
+from datetime import datetime, timedelta
 
 # ─── Version ──────────────────────────────────────────────────────────────────
 VERSION = "1.0.0"
@@ -35,8 +34,8 @@ STATE_FILE = "/var/lib/sshguardian/state.json"
 
 # ─── Auth log locations (tried in order) ──────────────────────────────────────
 AUTH_LOG_CANDIDATES = [
-    "/var/log/auth.log",       # Debian / Ubuntu
-    "/var/log/secure",         # RHEL / CentOS / Fedora
+    "/var/log/auth.log",  # Debian / Ubuntu
+    "/var/log/secure",  # RHEL / CentOS / Fedora
 ]
 
 # ─── Regex patterns for SSH log lines ─────────────────────────────────────────
@@ -62,6 +61,7 @@ PATTERNS = {
         r"Disconnecting.*authenticating user (?P<user>\S+)?\s*(?P<ip>\d+\.\d+\.\d+\.\d+).*Too many authentication failures"
     ),
 }
+
 
 # ─── ANSI colors for terminal output ──────────────────────────────────────────
 class C:
@@ -129,7 +129,9 @@ def resolve_auth_log(config: dict) -> str:
 def setup_logging(config: dict) -> logging.Logger:
     logger = logging.getLogger("sshguardian")
     logger.setLevel(getattr(logging, config["log_level"].upper(), logging.INFO))
-    fmt = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
+    fmt = logging.Formatter(
+        "%(asctime)s [%(levelname)s] %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
+    )
 
     ch = logging.StreamHandler()
     ch.setFormatter(fmt)
@@ -165,7 +167,9 @@ def send_email_alert(config: dict, subject: str, body: str, logger: logging.Logg
         msg["From"] = config["email_from"] or f"sshguardian@{os.uname().nodename}"
         msg["To"] = config["email_to"]
 
-        with smtplib.SMTP(config["smtp_server"], config["smtp_port"], timeout=15) as srv:
+        with smtplib.SMTP(
+            config["smtp_server"], config["smtp_port"], timeout=15
+        ) as srv:
             if config["smtp_tls"]:
                 srv.starttls()
             if config["smtp_user"]:
@@ -181,17 +185,17 @@ def build_alert_body(ip: str, tracker: dict, hostname: str) -> str:
     """Build a human-readable alert email body."""
     entry = tracker[ip]
     lines = [
-        f"═══ SSHGuardian Alert ═══",
-        f"",
+        "═══ SSHGuardian Alert ═══",
+        "",
         f"Host:        {hostname}",
         f"Threat IP:   {ip}",
         f"Failed attempts: {entry['count']} in {entry['window']}s window",
         f"First seen:  {entry['first_seen']}",
         f"Last seen:   {entry['last_seen']}",
         f"Users tried: {', '.join(sorted(entry['users']))}",
-        f"",
+        "",
         f"Action taken: {'IP BLOCKED' if entry.get('blocked') else 'ALERT ONLY (blocking disabled)'}",
-        f"",
+        "",
         f"— SSHGuardian v{VERSION}",
     ]
     return "\n".join(lines)
@@ -200,11 +204,15 @@ def build_alert_body(ip: str, tracker: dict, hostname: str) -> str:
 # ═══════════════════════════════════════════════════════════════════════════════
 # IP Blocking
 # ═══════════════════════════════════════════════════════════════════════════════
-def block_ip(ip: str, config: dict, logger: logging.Logger, dry_run: bool = False) -> bool:
+def block_ip(
+    ip: str, config: dict, logger: logging.Logger, dry_run: bool = False
+) -> bool:
     """Block an IP address using UFW or iptables."""
     if not config["block_enabled"] or dry_run:
         if dry_run:
-            logger.info("🔒 [DRY-RUN] Would block IP %s via %s", ip, config["block_method"])
+            logger.info(
+                "🔒 [DRY-RUN] Would block IP %s via %s", ip, config["block_method"]
+            )
         return False
 
     method = config["block_method"].lower()
@@ -225,7 +233,9 @@ def block_ip(ip: str, config: dict, logger: logging.Logger, dry_run: bool = Fals
             logger.error("Block failed for %s: %s", ip, result.stderr.strip())
             return False
     except FileNotFoundError:
-        logger.error("%s not found — install it or change block_method in config", method)
+        logger.error(
+            "%s not found — install it or change block_method in config", method
+        )
         return False
     except subprocess.TimeoutExpired:
         logger.error("Timeout blocking %s", ip)
@@ -277,10 +287,17 @@ def save_state(tracker: dict, blocked: dict):
 
 def load_state() -> tuple:
     """Restore tracker and blocked IPs from disk."""
-    tracker = defaultdict(lambda: {
-        "count": 0, "timestamps": [], "users": set(),
-        "first_seen": "", "last_seen": "", "alerted": False, "blocked": False,
-    })
+    tracker = defaultdict(
+        lambda: {
+            "count": 0,
+            "timestamps": [],
+            "users": set(),
+            "first_seen": "",
+            "last_seen": "",
+            "alerted": False,
+            "blocked": False,
+        }
+    )
     blocked = {}
     if not os.path.isfile(STATE_FILE):
         return tracker, blocked
@@ -398,7 +415,12 @@ class DetectionEngine:
         # State
         self.tracker, self.blocked = load_state()
         self.cooldowns = {}  # ip -> datetime when cooldown expires
-        self.stats = {"events_total": 0, "alerts_fired": 0, "ips_blocked": 0, "start_time": datetime.now()}
+        self.stats = {
+            "events_total": 0,
+            "alerts_fired": 0,
+            "ips_blocked": 0,
+            "start_time": datetime.now(),
+        }
 
     def process_event(self, event: dict):
         """Process a parsed SSH event."""
@@ -411,7 +433,14 @@ class DetectionEngine:
         if etype == "accepted_login":
             self.logger.info(
                 "%s✓  Accepted login%s for %s%s%s from %s%s%s",
-                C.GRN, C.RST, C.BLD, user, C.RST, C.CYN, ip, C.RST,
+                C.GRN,
+                C.RST,
+                C.BLD,
+                user,
+                C.RST,
+                C.CYN,
+                ip,
+                C.RST,
             )
             return
 
@@ -440,7 +469,14 @@ class DetectionEngine:
         severity = "⚡" if recent_count >= self.config["threshold"] - 1 else "•"
         self.logger.info(
             "%s  Failed auth from %s%s%s → user=%s%s%s  [%d in window]",
-            severity, C.YEL, ip, C.RST, C.BLD, user, C.RST, recent_count,
+            severity,
+            C.YEL,
+            ip,
+            C.RST,
+            C.BLD,
+            user,
+            C.RST,
+            recent_count,
         )
 
         # ── Threshold reached? ──
@@ -462,7 +498,13 @@ class DetectionEngine:
 
         self.logger.warning(
             "%s%s🚨 ALERT: %s exceeded threshold — %d failures in %ds (users: %s)%s",
-            C.RED, C.BLD, ip, recent, self.config["window_seconds"], users_str, C.RST,
+            C.RED,
+            C.BLD,
+            ip,
+            recent,
+            self.config["window_seconds"],
+            users_str,
+            C.RST,
         )
 
         # ── Email alert ──
@@ -475,7 +517,9 @@ class DetectionEngine:
             blocked = block_ip(ip, self.config, self.logger, self.dry_run)
             if blocked:
                 entry["blocked"] = True
-                self.blocked[ip] = now + timedelta(minutes=self.config["block_duration_minutes"])
+                self.blocked[ip] = now + timedelta(
+                    minutes=self.config["block_duration_minutes"]
+                )
                 self.stats["ips_blocked"] += 1
 
         entry["alerted"] = True
@@ -512,14 +556,26 @@ class DetectionEngine:
             print(f"  {C.DIM}No tracked IPs yet.{C.RST}\n")
             return
 
-        print(f"  {'IP':<18} {'Fails':>6} {'Users':<30} {'Last Seen':<20} {'Status':<10}")
+        print(
+            f"  {'IP':<18} {'Fails':>6} {'Users':<30} {'Last Seen':<20} {'Status':<10}"
+        )
         print(f"  {'─'*18} {'─'*6} {'─'*30} {'─'*20} {'─'*10}")
-        for ip, info in sorted(self.tracker.items(), key=lambda x: x[1]["count"], reverse=True):
+        for ip, info in sorted(
+            self.tracker.items(), key=lambda x: x[1]["count"], reverse=True
+        ):
             users = ", ".join(sorted(info["users"]))[:28]
-            status = f"{C.RED}BLOCKED{C.RST}" if info.get("blocked") else (
-                f"{C.YEL}ALERTED{C.RST}" if info.get("alerted") else f"{C.DIM}tracking{C.RST}"
+            status = (
+                f"{C.RED}BLOCKED{C.RST}"
+                if info.get("blocked")
+                else (
+                    f"{C.YEL}ALERTED{C.RST}"
+                    if info.get("alerted")
+                    else f"{C.DIM}tracking{C.RST}"
+                )
             )
-            print(f"  {ip:<18} {info['count']:>6} {users:<30} {info['last_seen']:<20} {status}")
+            print(
+                f"  {ip:<18} {info['count']:>6} {users:<30} {info['last_seen']:<20} {status}"
+            )
         print()
 
 
@@ -538,7 +594,9 @@ def show_status():
         print(f"  {C.DIM}No tracked IPs in state file.{C.RST}\n")
         return
 
-    print(f"\n  {'IP':<18} {'Fails':>6} {'Users':<30} {'Last Seen':<20} {'Blocked':<10}")
+    print(
+        f"\n  {'IP':<18} {'Fails':>6} {'Users':<30} {'Last Seen':<20} {'Blocked':<10}"
+    )
     print(f"  {'─'*18} {'─'*6} {'─'*30} {'─'*20} {'─'*10}")
     for ip, info in sorted(tracker.items(), key=lambda x: x[1]["count"], reverse=True):
         users = ", ".join(sorted(info["users"]))[:28]
@@ -550,7 +608,9 @@ def show_status():
             if remaining.total_seconds() > 0:
                 mins = int(remaining.total_seconds() // 60)
                 status = f"{C.RED}YES ({mins}m left){C.RST}"
-        print(f"  {ip:<18} {info['count']:>6} {users:<30} {info['last_seen']:<20} {status}")
+        print(
+            f"  {ip:<18} {info['count']:>6} {users:<30} {info['last_seen']:<20} {status}"
+        )
     print()
 
 
@@ -562,10 +622,18 @@ def main():
         description="SSHGuardian — Real-Time SSH Intrusion Detection",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    parser.add_argument("-c", "--config", default=DEFAULT_CONFIG, help="Config file path")
-    parser.add_argument("--dry-run", action="store_true", help="Monitor only — no blocking")
-    parser.add_argument("--status", action="store_true", help="Show current threat table and exit")
-    parser.add_argument("--version", action="version", version=f"SSHGuardian v{VERSION}")
+    parser.add_argument(
+        "-c", "--config", default=DEFAULT_CONFIG, help="Config file path"
+    )
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Monitor only — no blocking"
+    )
+    parser.add_argument(
+        "--status", action="store_true", help="Show current threat table and exit"
+    )
+    parser.add_argument(
+        "--version", action="version", version=f"SSHGuardian v{VERSION}"
+    )
     args = parser.parse_args()
 
     # ── Status mode ──
@@ -575,7 +643,9 @@ def main():
 
     # ── Root check ──
     if os.geteuid() != 0:
-        print(f"{C.RED}Error: SSHGuardian must run as root to read auth logs and manage firewall rules.{C.RST}")
+        print(
+            f"{C.RED}Error: SSHGuardian must run as root to read auth logs and manage firewall rules.{C.RST}"
+        )
         print(f"  Try: sudo python3 {sys.argv[0]}")
         sys.exit(1)
 
@@ -592,11 +662,24 @@ def main():
     logger.info("  SSHGuardian v%s starting", VERSION)
     logger.info("  Host:       %s", os.uname().nodename)
     logger.info("  Monitoring: %s", auth_log)
-    logger.info("  Threshold:  %d failures in %ds", config["threshold"], config["window_seconds"])
-    logger.info("  Blocking:   %s", f"{config['block_method'].upper()}" if config["block_enabled"] else "DISABLED")
-    logger.info("  Email:      %s", config["email_to"] if config["email_enabled"] else "DISABLED")
+    logger.info(
+        "  Threshold:  %d failures in %ds",
+        config["threshold"],
+        config["window_seconds"],
+    )
+    logger.info(
+        "  Blocking:   %s",
+        f"{config['block_method'].upper()}" if config["block_enabled"] else "DISABLED",
+    )
+    logger.info(
+        "  Email:      %s",
+        config["email_to"] if config["email_enabled"] else "DISABLED",
+    )
     logger.info("  Dry-run:    %s", "YES" if args.dry_run else "no")
-    logger.info("  Whitelist:  %s", ", ".join(config["whitelist"]) if config["whitelist"] else "none")
+    logger.info(
+        "  Whitelist:  %s",
+        ", ".join(config["whitelist"]) if config["whitelist"] else "none",
+    )
     logger.info("═" * 55)
 
     # ── Detection engine ──
