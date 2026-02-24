@@ -56,4 +56,35 @@ That prints the threat table to the journal, so check `journalctl -u sshguardian
 
 Of these, the `--status` command is probably the most useful for a quick daily check. The log stream is what you'd want if you're actively investigating something. And if you decide later that you want push notifications, you can always flip `email_enabled` to `true` in the config and restart the service.
 
+---
+
+## Status
+
+```sh
+# Send SIGUSR1 for live status:
+sudo kill -USR1 $(pidof -x sshguardian.py)
+```
+
+It's a way to ask a running program to do something without stopping it.
+
+**`kill`** is a bit of a misleading name — it doesn't necessarily kill anything. It sends a *signal* to a process. `SIGUSR1` is a user-defined signal that programs can listen for and respond to however they want.
+
+In SSHGuardian's case, when it receives `SIGUSR1`, it prints the current threat status table (all tracked IPs, fail counts, block status) to its log output.
+
+Breaking down the command:
+
+- **`sudo`** — run as root (needed since SSHGuardian runs as root)
+- **`kill -USR1`** — send the SIGUSR1 signal
+- **`$(pidof -x sshguardian.py)`** — this part finds the process ID of the running SSHGuardian daemon automatically
+
+So instead of looking up the process ID yourself, the command does it in one shot. It's the equivalent of saying "hey SSHGuardian, print me a status report right now" while it keeps running in the background.
+
+After running it, you'd see the output in:
+
+```bash
+sudo journalctl -u sshguardian -n 20
+```
+
+That said, running `sudo python3 /opt/sshguardian/sshguardian.py --status` gives you the same information and is simpler. The `SIGUSR1` approach is more of a sysadmin shortcut for when you're already in a terminal and want a quick peek.
+
 <br>
