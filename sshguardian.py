@@ -22,7 +22,9 @@ import subprocess
 import sys
 import time
 from collections import defaultdict
+from contextlib import suppress
 from datetime import datetime, timedelta
+from pathlib import Path
 
 # ─── Version ──────────────────────────────────────────────────────────────────
 VERSION = "1.0.0"
@@ -101,8 +103,8 @@ DEFAULT_SETTINGS = {
 
 def load_config(path: str) -> dict:
     """Load configuration, merging user settings over defaults."""
-    config = dict(DEFAULT_SETTINGS)
-    if os.path.isfile(path):
+    config = DEFAULT_SETTINGS.copy()
+    if Path(path).is_file():
         try:
             with open(path, "r") as f:
                 user_config = json.load(f)
@@ -118,7 +120,7 @@ def resolve_auth_log(config: dict) -> str:
     if config["auth_log"] != "auto":
         return config["auth_log"]
     for candidate in AUTH_LOG_CANDIDATES:
-        if os.path.isfile(candidate):
+        if Path(candidate).is_file():
             return candidate
     return AUTH_LOG_CANDIDATES[0]
 
@@ -139,7 +141,7 @@ def setup_logging(config: dict) -> logging.Logger:
 
     log_dir = os.path.dirname(config["log_file"])
     if log_dir:
-        os.makedirs(log_dir, exist_ok=True)
+        Path(log_dir).mkdir(parents=True, exist_ok=True)
     try:
         fh = logging.FileHandler(config["log_file"])
         fh.setFormatter(fmt)
@@ -263,7 +265,7 @@ def unblock_ip(ip: str, config: dict, logger: logging.Logger):
 # ═══════════════════════════════════════════════════════════════════════════════
 def save_state(tracker: dict, blocked: dict):
     """Persist tracker and blocked IPs to disk."""
-    os.makedirs(os.path.dirname(STATE_FILE), exist_ok=True)
+    Path(STATE_FILE).parent.mkdir(parents=True, exist_ok=True)
     state = {
         "tracker": {},
         "blocked": {},
@@ -278,11 +280,9 @@ def save_state(tracker: dict, blocked: dict):
         }
     for ip, unblock_time in blocked.items():
         state["blocked"][ip] = unblock_time.isoformat()
-    try:
+    with suppress(OSError):
         with open(STATE_FILE, "w") as f:
             json.dump(state, f, indent=2)
-    except OSError:
-        pass
 
 
 def load_state() -> tuple:
@@ -299,7 +299,7 @@ def load_state() -> tuple:
         }
     )
     blocked = {}
-    if not os.path.isfile(STATE_FILE):
+    if not Path(STATE_FILE).is_file():
         return tracker, blocked
     try:
         with open(STATE_FILE, "r") as f:
@@ -329,14 +329,14 @@ def tail_follow(filepath: str, logger: logging.Logger):
     Generator that yields new lines appended to a file (like tail -F).
     Handles log rotation (file shrinks or inode changes).
     """
-    while not os.path.isfile(filepath):
+    while not Path(filepath).is_file():
         logger.warning("Waiting for %s to appear...", filepath)
         time.sleep(2)
 
     with open(filepath, "r") as f:
         # Seek to end — we only care about new lines
         f.seek(0, 2)
-        stat = os.stat(filepath)
+        stat = Path(filepath).stat()
         inode = stat.st_ino
 
         while True:
@@ -347,13 +347,13 @@ def tail_follow(filepath: str, logger: logging.Logger):
                 time.sleep(0.3)
                 # Check for log rotation
                 try:
-                    new_stat = os.stat(filepath)
+                    new_stat = Path(filepath).stat()
                     if new_stat.st_ino != inode or new_stat.st_size < f.tell():
                         logger.info("Log rotation detected — reopening %s", filepath)
                         f.close()
                         time.sleep(0.5)
                         f_new = open(filepath, "r")
-                        inode = os.stat(filepath).st_ino
+                        inode = Path(filepath).stat().st_ino
                         # Replace generator's file handle (we re-enter the loop)
                         yield from _continue_tail(f_new, filepath, logger)
                         return
@@ -669,7 +669,7 @@ def main():
     )
     logger.info(
         "  Blocking:   %s",
-        f"{config['block_method'].upper()}" if config["block_enabled"] else "DISABLED",
+        config["block_method"].upper() if config["block_enabled"] else "DISABLED",
     )
     logger.info(
         "  Email:      %s",
@@ -707,7 +707,7 @@ def main():
     # ── Main loop ──
     logger.info("Watching %s for SSH events... (Ctrl+C to stop)", auth_log)
 
-    try:
+    with suppress(KeyboardInterrupt):
         for line in tail_follow(auth_log, logger):
             if shutdown:
                 break
@@ -721,9 +721,6 @@ def main():
             if now_ts - last_expire_check > 30:
                 engine.expire_blocks()
                 last_expire_check = now_ts
-
-    except KeyboardInterrupt:
-        pass
 
     logger.info("SSHGuardian stopped.")
     save_state(engine.tracker, engine.blocked)
