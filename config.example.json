@@ -1,0 +1,29 @@
+{
+    "_comment": "SSHGuardian configuration — edit to match your environment",
+
+    "auth_log": "auto",
+
+    "threshold": 5,
+    "window_seconds": 300,
+
+    "block_enabled": false,
+    "block_method": "ufw",
+    "block_duration_minutes": 60,
+
+    "email_enabled": false,
+    "email_to": "",
+    "email_from": "",
+    "smtp_server": "localhost",
+    "smtp_port": 25,
+    "smtp_tls": false,
+    "smtp_user": "",
+    "smtp_pass": "",
+
+    "whitelist": [
+        "127.0.0.1"
+    ],
+
+    "log_file": "/var/log/sshguardian.log",
+    "log_level": "INFO",
+    "cooldown_minutes": 10
+}
