@@ -1,91 +1,110 @@
 # 🛡️ SSH Guardian
 
-**Real-Time SSH Intrusion Detection for Linux**
+**Production-Ready Real-Time SSH Intrusion Detection (Python, Linux, Systemd)**
 
-SSHGuardian is a lightweight Python daemon that monitors SSH authentication logs in real time and alerts you when suspicious activity starts.
+A lightweight, dependency-free intrusion detection daemon for monitoring SSH authentication activity on Linux servers.
 
-It detects brute-force login attempts and can optionally block offending IP addresses.
+Built with production deployment in mind: systemd integration, state persistence, log rotation handling, optional firewall enforcement, and zero external dependencies.
 
-Built for Ubuntu servers, VPS instances, and home labs where SSH is exposed to the internet.
-
----
-
-## ✨ What It Does
-
-* Monitors `/var/log/auth.log` live
-* Detects repeated failed SSH login attempts
-* Sends optional email alerts
-* Can auto-block IPs via UFW or iptables
-* Survives restarts (state persistence)
-* Runs as a systemd service
-* No external dependencies (Python 3 only)
+GitHub: [https://github.com/tdiprima/SSH-Guardian](https://github.com/tdiprima/SSH-Guardian)
 
 ---
 
-## 🚀 Quick Start
+## 📌 Overview
+
+SSHGuardian provides early detection of SSH brute-force activity by continuously monitoring authentication logs and applying threshold-based detection per source IP.
+
+It prioritizes **operational visibility first**, with optional automated response (IP blocking).
+
+Designed for:
+
+* VPS / cloud servers
+* Self-hosted infrastructure
+* Hardened Ubuntu deployments
+* DevOps / SRE security baselines
+
+---
+
+## 🧠 Architecture Highlights
+
+* Real-time log tailing with rotation awareness
+* Sliding window detection algorithm (per-IP tracking)
+* Persistent state across restarts
+* Optional automated firewall enforcement (UFW / iptables)
+* Systemd service integration
+* Dry-run mode for safe validation
+* Zero third-party packages (Python standard library only)
+
+---
+
+## 🔍 Detection Model
+
+* Configurable failure threshold (e.g. 5 attempts)
+* Configurable time window (e.g. 300 seconds)
+* Cooldown to prevent alert storms
+* Whitelist protection to prevent self-lockout
+
+When the threshold is exceeded:
+
+1. Structured log event generated
+2. Optional SMTP alert sent
+3. Optional temporary firewall block applied
+4. Block auto-expires after defined duration
+
+---
+
+## 🚀 Installation
 
 ```bash
-git clone https://github.com/tdiprima/SSH-Guardian
-cd SSH-Guardian
+git clone https://github.com/tdiprima/SSHGuardian
+cd SSHGuardian
 sudo python3 install.py
+sudo systemctl enable sshguardian
 sudo systemctl start sshguardian
 ```
 
-Watch logs:
-
-```bash
-sudo journalctl -u sshguardian -f
-```
-
 ---
 
-## ⚙️ How It Works
+## 🧪 Testing & Validation
 
-1. Follows SSH auth logs in real time
-2. Tracks failed login attempts per IP
-3. Triggers when a threshold is exceeded
-4. Alerts you (and optionally blocks the IP)
-
----
-
-## 🔧 Requirements
-
-* Ubuntu 20.04+ (Debian-compatible)
-* Python 3.8+
-* Root access
-* SSH server running
-
----
-
-## 🧪 Testing
-
-Run the built-in simulation:
+Built-in attack simulation and self-test framework:
 
 ```bash
 sudo python3 test_sim.py --self-test
 ```
 
+Enables deterministic validation before production deployment.
+
 ---
 
-## ⚠️ Important
+## 🛠 Tech Stack
 
-* Blocking is **disabled by default**.
-* Always whitelist your own IP before enabling auto-blocking.
-* This tool focuses on visibility first — blocking is optional.
-* This is not a replacement for a full security stack.
+* Python 3.8+
+* Linux (Ubuntu 20.04+ recommended)
+* systemd
+* UFW / iptables (optional)
+
+---
+
+## 🔐 Security Philosophy
+
+* Detection-first design
+* Least dependency footprint
+* Explicit configuration
+* Operational transparency
+* Safe defaults (blocking disabled by default)
+
+---
+
+## ⚠️ Disclaimer
+
+This software is provided as-is, without warranty.
+Always test in a staging or controlled environment before deploying to production infrastructure.
 
 ---
 
 ## 📄 License
 
-MIT License. Use at your own risk.
-
----
-
-## ⚖️ Disclaimer
-
-This software is provided "as is", without warranty of any kind.
-The author is not responsible for service interruption, lockouts, data loss, or security incidents resulting from its use.  
-Always test in a controlled environment before deploying to production.
+MIT License
 
 <br>
