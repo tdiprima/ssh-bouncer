@@ -59,8 +59,8 @@ When the threshold is exceeded:
 git clone https://github.com/tdiprima/ssh-bouncer
 cd ssh-bouncer
 sudo python3 install.py
-sudo systemctl enable sshguardian
-sudo systemctl start sshguardian
+sudo systemctl enable sshbouncer
+sudo systemctl start sshbouncer
 ```
 
 ---

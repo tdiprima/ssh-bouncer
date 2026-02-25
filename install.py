@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-SSHGuardian Installer — Sets up config, directories, and systemd service.
+SSHBouncer Installer — Sets up config, directories, and systemd service.
 
 Usage:
     sudo python3 install.py           # Interactive install
@@ -17,14 +17,14 @@ from contextlib import suppress
 from pathlib import Path
 
 # ─── Paths ────────────────────────────────────────────────────────────────────
-INSTALL_DIR = "/opt/sshguardian"
-CONFIG_DIR = "/etc/sshguardian"
+INSTALL_DIR = "/opt/sshbouncer"
+CONFIG_DIR = "/etc/sshbouncer"
 CONFIG_FILE = f"{CONFIG_DIR}/config.json"
 LOG_DIR = "/var/log"
-LOG_FILE = f"{LOG_DIR}/sshguardian.log"
-STATE_DIR = "/var/lib/sshguardian"
-SYSTEMD_FILE = "/etc/systemd/system/sshguardian.service"
-SCRIPT_NAME = "sshguardian.py"
+LOG_FILE = f"{LOG_DIR}/sshbouncer.log"
+STATE_DIR = "/var/lib/sshbouncer"
+SYSTEMD_FILE = "/etc/systemd/system/sshbouncer.service"
+SCRIPT_NAME = "sshbouncer.py"
 
 # ─── Colors ───────────────────────────────────────────────────────────────────
 R = "\033[91m"
@@ -59,7 +59,7 @@ DEFAULT_CONFIG = {
 
 # ─── Systemd unit ─────────────────────────────────────────────────────────────
 SYSTEMD_UNIT = f"""[Unit]
-Description=SSHGuardian — Real-Time SSH Intrusion Detection
+Description=SSHBouncer — Real-Time SSH Intrusion Detection
 After=network.target sshd.service
 Wants=sshd.service
 
@@ -70,7 +70,7 @@ Restart=on-failure
 RestartSec=5
 StandardOutput=journal
 StandardError=journal
-SyslogIdentifier=sshguardian
+SyslogIdentifier=sshbouncer
 
 [Install]
 WantedBy=multi-user.target
@@ -81,7 +81,7 @@ def banner():
     print(
         f"""
 {B}{C}╔══════════════════════════════════════════════════╗
-║          SSHGuardian  —  Installer               ║
+║          SSHBouncer  —  Installer               ║
 ║    Real-Time SSH Intrusion Detection for Linux    ║
 ╚══════════════════════════════════════════════════╝{X}
 """
@@ -156,7 +156,7 @@ def install():
         config["smtp_user"] = ask("SMTP username (blank for none)", "")
         if config["smtp_user"]:
             config["smtp_pass"] = ask("SMTP password", "")
-        config["email_from"] = ask("From address", f"sshguardian@{os.uname().nodename}")
+        config["email_from"] = ask("From address", f"sshbouncer@{os.uname().nodename}")
 
     # ── Create directories ──
     print(f"\n{B}Step 2: Installing files{X}\n")
@@ -200,16 +200,16 @@ def install():
 
     # ── Done ──
     print(f"\n{B}Step 3: Next steps{X}\n")
-    print(f"  Start now:           {C}sudo systemctl start sshguardian{X}")
-    print(f"  Enable on boot:      {C}sudo systemctl enable sshguardian{X}")
-    print(f"  Check status:        {C}sudo systemctl status sshguardian{X}")
-    print(f"  View live log:       {C}sudo journalctl -u sshguardian -f{X}")
+    print(f"  Start now:           {C}sudo systemctl start sshbouncer{X}")
+    print(f"  Enable on boot:      {C}sudo systemctl enable sshbouncer{X}")
+    print(f"  Check status:        {C}sudo systemctl status sshbouncer{X}")
+    print(f"  View live log:       {C}sudo journalctl -u sshbouncer -f{X}")
     print(
         f"  View threat table:   {C}sudo python3 {INSTALL_DIR}/{SCRIPT_NAME} --status{X}"
     )
     print(f"  Edit config:         {C}sudo nano {CONFIG_FILE}{X}")
     print(
-        f"  Send SIGUSR1 for live status:  {C}sudo kill -USR1 $(pidof -x sshguardian.py){X}"
+        f"  Send SIGUSR1 for live status:  {C}sudo kill -USR1 $(pidof -x sshbouncer.py){X}"
     )
     print(f"\n  {G}{B}Installation complete!{X}\n")
 
@@ -218,11 +218,11 @@ def uninstall():
     banner()
     check_root()
 
-    print(f"{Y}Uninstalling SSHGuardian...{X}\n")
+    print(f"{Y}Uninstalling SSHBouncer...{X}\n")
 
     # Stop service
-    subprocess.run(["systemctl", "stop", "sshguardian"], capture_output=True)
-    subprocess.run(["systemctl", "disable", "sshguardian"], capture_output=True)
+    subprocess.run(["systemctl", "stop", "sshbouncer"], capture_output=True)
+    subprocess.run(["systemctl", "disable", "sshbouncer"], capture_output=True)
     print(f"  {G}✓{X}  Service stopped and disabled")
 
     # Remove files
@@ -250,8 +250,8 @@ def uninstall():
 
 
 def main():
-    parser = argparse.ArgumentParser(description="SSHGuardian Installer")
-    parser.add_argument("--uninstall", action="store_true", help="Remove SSHGuardian")
+    parser = argparse.ArgumentParser(description="SSHBouncer Installer")
+    parser.add_argument("--uninstall", action="store_true", help="Remove SSHBouncer")
     args = parser.parse_args()
 
     if args.uninstall:

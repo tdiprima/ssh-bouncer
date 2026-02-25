@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 """
-SSHGuardian — Real-Time SSH Intrusion Detection for Linux
+SSHBouncer — Real-Time SSH Intrusion Detection for Linux
 
 Monitors SSH authentication logs in real-time, detects brute-force attempts,
 sends optional email alerts, and optionally blocks offending IPs via UFW or iptables.
 
 Usage:
-    sudo python3 sshguardian.py                  # Run with defaults
-    sudo python3 sshguardian.py -c /etc/sshguardian/config.json
-    sudo python3 sshguardian.py --dry-run         # Monitor only, no blocking
-    sudo python3 sshguardian.py --status           # Show current threat table
+    sudo python3 sshbouncer.py                  # Run with defaults
+    sudo python3 sshbouncer.py -c /etc/sshbouncer/config.json
+    sudo python3 sshbouncer.py --dry-run         # Monitor only, no blocking
+    sudo python3 sshbouncer.py --status           # Show current threat table
 """
 
 import argparse
@@ -30,9 +30,9 @@ from pathlib import Path
 VERSION = "1.0.0"
 
 # ─── Default paths ────────────────────────────────────────────────────────────
-DEFAULT_CONFIG = "/etc/sshguardian/config.json"
-DEFAULT_LOG_FILE = "/var/log/sshguardian.log"
-STATE_FILE = "/var/lib/sshguardian/state.json"
+DEFAULT_CONFIG = "/etc/sshbouncer/config.json"
+DEFAULT_LOG_FILE = "/var/log/sshbouncer.log"
+STATE_FILE = "/var/lib/sshbouncer/state.json"
 
 # ─── Auth log locations (tried in order) ──────────────────────────────────────
 AUTH_LOG_CANDIDATES = [
@@ -129,7 +129,7 @@ def resolve_auth_log(config: dict) -> str:
 # Logging
 # ═══════════════════════════════════════════════════════════════════════════════
 def setup_logging(config: dict) -> logging.Logger:
-    logger = logging.getLogger("sshguardian")
+    logger = logging.getLogger("sshbouncer")
     logger.setLevel(getattr(logging, config["log_level"].upper(), logging.INFO))
     fmt = logging.Formatter(
         "%(asctime)s [%(levelname)s] %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
@@ -166,7 +166,7 @@ def send_email_alert(config: dict, subject: str, body: str, logger: logging.Logg
 
         msg = MIMEText(body)
         msg["Subject"] = subject
-        msg["From"] = config["email_from"] or f"sshguardian@{os.uname().nodename}"
+        msg["From"] = config["email_from"] or f"sshbouncer@{os.uname().nodename}"
         msg["To"] = config["email_to"]
 
         with smtplib.SMTP(
@@ -187,7 +187,7 @@ def build_alert_body(ip: str, tracker: dict, hostname: str) -> str:
     """Build a human-readable alert email body."""
     entry = tracker[ip]
     lines = [
-        "═══ SSHGuardian Alert ═══",
+        "═══ SSHBouncer Alert ═══",
         "",
         f"Host:        {hostname}",
         f"Threat IP:   {ip}",
@@ -198,7 +198,7 @@ def build_alert_body(ip: str, tracker: dict, hostname: str) -> str:
         "",
         f"Action taken: {'IP BLOCKED' if entry.get('blocked') else 'ALERT ONLY (blocking disabled)'}",
         "",
-        f"— SSHGuardian v{VERSION}",
+        f"— SSHBouncer v{VERSION}",
     ]
     return "\n".join(lines)
 
@@ -508,7 +508,7 @@ class DetectionEngine:
         )
 
         # ── Email alert ──
-        subject = f"[SSHGuardian] 🚨 Brute-force detected from {ip} on {self.hostname}"
+        subject = f"[SSHBouncer] 🚨 Brute-force detected from {ip} on {self.hostname}"
         body = build_alert_body(ip, self.tracker, self.hostname)
         send_email_alert(self.config, subject, body, self.logger)
 
@@ -544,7 +544,7 @@ class DetectionEngine:
         hours = int(uptime.total_seconds() // 3600)
         mins = int((uptime.total_seconds() % 3600) // 60)
 
-        print(f"\n{C.BLD}{C.CYN}═══ SSHGuardian Status ═══{C.RST}")
+        print(f"\n{C.BLD}{C.CYN}═══ SSHBouncer Status ═══{C.RST}")
         print(f"  Uptime:       {hours}h {mins}m")
         print(f"  Events seen:  {self.stats['events_total']}")
         print(f"  Alerts fired: {self.stats['alerts_fired']}")
@@ -587,7 +587,7 @@ def show_status():
     tracker, blocked = load_state()
     now = datetime.now()
 
-    print(f"\n{C.BLD}{C.CYN}═══ SSHGuardian — Current State ═══{C.RST}")
+    print(f"\n{C.BLD}{C.CYN}═══ SSHBouncer — Current State ═══{C.RST}")
     print(f"  Active blocks: {len(blocked)}")
 
     if not tracker:
@@ -619,7 +619,7 @@ def show_status():
 # ═══════════════════════════════════════════════════════════════════════════════
 def main():
     parser = argparse.ArgumentParser(
-        description="SSHGuardian — Real-Time SSH Intrusion Detection",
+        description="SSHBouncer — Real-Time SSH Intrusion Detection",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
@@ -632,7 +632,7 @@ def main():
         "--status", action="store_true", help="Show current threat table and exit"
     )
     parser.add_argument(
-        "--version", action="version", version=f"SSHGuardian v{VERSION}"
+        "--version", action="version", version=f"SSHBouncer v{VERSION}"
     )
     args = parser.parse_args()
 
@@ -644,7 +644,7 @@ def main():
     # ── Root check ──
     if os.geteuid() != 0:
         print(
-            f"{C.RED}Error: SSHGuardian must run as root to read auth logs and manage firewall rules.{C.RST}"
+            f"{C.RED}Error: SSHBouncer must run as root to read auth logs and manage firewall rules.{C.RST}"
         )
         print(f"  Try: sudo python3 {sys.argv[0]}")
         sys.exit(1)
@@ -659,7 +659,7 @@ def main():
 
     # ── Banner ──
     logger.info("═" * 55)
-    logger.info("  SSHGuardian v%s starting", VERSION)
+    logger.info("  SSHBouncer v%s starting", VERSION)
     logger.info("  Host:       %s", os.uname().nodename)
     logger.info("  Monitoring: %s", auth_log)
     logger.info(
@@ -722,7 +722,7 @@ def main():
                 engine.expire_blocks()
                 last_expire_check = now_ts
 
-    logger.info("SSHGuardian stopped.")
+    logger.info("SSHBouncer stopped.")
     save_state(engine.tracker, engine.blocked)
 
 

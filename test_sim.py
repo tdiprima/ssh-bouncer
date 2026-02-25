@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
-SSHGuardian Test Harness — Simulate SSH attacks against a fake auth.log.
+SSHBouncer Test Harness — Simulate SSH attacks against a fake auth.log.
 
 Creates a temporary auth.log, writes simulated attack lines into it,
-and lets you watch SSHGuardian detect and respond to them in real-time.
+and lets you watch SSHBouncer detect and respond to them in real-time.
 
 Usage:
-    # Terminal 1 — start SSHGuardian pointed at the fake log:
-    sudo python3 sshguardian.py -c test_config.json --dry-run
+    # Terminal 1 — start SSHBouncer pointed at the fake log:
+    sudo python3 sshbouncer.py -c test_config.json --dry-run
 
     # Terminal 2 — run this script:
     python3 test_sim.py
@@ -34,8 +34,8 @@ B = "\033[1m"
 D = "\033[2m"
 X = "\033[0m"
 
-FAKE_LOG = "/tmp/sshguardian_test_auth.log"
-TEST_CONFIG = "/tmp/sshguardian_test_config.json"
+FAKE_LOG = "/tmp/sshbouncer_test_auth.log"
+TEST_CONFIG = "/tmp/sshbouncer_test_config.json"
 
 
 def write_test_config():
@@ -47,7 +47,7 @@ def write_test_config():
         "block_enabled": False,
         "email_enabled": False,
         "whitelist": ["127.0.0.1"],
-        "log_file": "/tmp/sshguardian_test.log",
+        "log_file": "/tmp/sshbouncer_test.log",
         "log_level": "INFO",
         "cooldown_minutes": 1,
     }
@@ -71,7 +71,7 @@ def run_simulation():
     # Ensure the log file exists
     open(FAKE_LOG, "a").close()
 
-    print(f"\n{B}{C}═══ SSHGuardian Test Simulation ═══{X}\n")
+    print(f"\n{B}{C}═══ SSHBouncer Test Simulation ═══{X}\n")
     print(f"  Writing to: {FAKE_LOG}")
     print("  Threshold:  3 failures in 60s\n")
 
@@ -136,22 +136,22 @@ def run_simulation():
             time.sleep(1)
 
     print(f"  {B}{G}Simulation complete.{X}")
-    print("  Check SSHGuardian output for detections.\n")
+    print("  Check SSHBouncer output for detections.\n")
 
 
 def self_test():
-    """Run SSHGuardian + simulation together for a quick smoke test."""
-    print(f"\n{B}{C}═══ SSHGuardian Self-Test ═══{X}\n")
+    """Run SSHBouncer + simulation together for a quick smoke test."""
+    print(f"\n{B}{C}═══ SSHBouncer Self-Test ═══{X}\n")
 
     # Prepare
     write_test_config()
     open(FAKE_LOG, "w").close()  # fresh log
 
-    # Start SSHGuardian in background
+    # Start SSHBouncer in background
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    guardian_path = os.path.join(script_dir, "sshguardian.py")
+    guardian_path = os.path.join(script_dir, "sshbouncer.py")
 
-    print("  Starting SSHGuardian (dry-run)...")
+    print("  Starting SSHBouncer (dry-run)...")
     proc = subprocess.Popen(
         [sys.executable, guardian_path, "-c", TEST_CONFIG, "--dry-run"],
         stdout=subprocess.PIPE,
@@ -175,7 +175,7 @@ def self_test():
         output, _ = proc.communicate()
 
     # Show guardian output
-    print(f"\n{B}{C}═══ SSHGuardian Output ═══{X}\n")
+    print(f"\n{B}{C}═══ SSHBouncer Output ═══{X}\n")
     for line in output.splitlines():
         print(f"  {line}")
 
@@ -194,7 +194,7 @@ def self_test():
         print(f"  {G}✓ PASS{X} — Legitimate login was logged")
 
     # Cleanup
-    for f in (FAKE_LOG, TEST_CONFIG, "/tmp/sshguardian_test.log"):
+    for f in (FAKE_LOG, TEST_CONFIG, "/tmp/sshbouncer_test.log"):
         if os.path.isfile(f):
             Path(f).unlink()
 
@@ -202,9 +202,9 @@ def self_test():
 
 
 def main():
-    parser = argparse.ArgumentParser(description="SSHGuardian Test Simulator")
+    parser = argparse.ArgumentParser(description="SSHBouncer Test Simulator")
     parser.add_argument(
-        "--self-test", action="store_true", help="Run SSHGuardian + simulation together"
+        "--self-test", action="store_true", help="Run SSHBouncer + simulation together"
     )
     args = parser.parse_args()
 

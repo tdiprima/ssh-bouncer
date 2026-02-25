@@ -1,5 +1,5 @@
 {
-    "_comment": "SSHGuardian configuration — edit to match your environment",
+    "_comment": "SSHBouncer configuration — edit to match your environment",
 
     "auth_log": "auto",
 
@@ -23,7 +23,7 @@
         "127.0.0.1"
     ],
 
-    "log_file": "/var/log/sshguardian.log",
+    "log_file": "/var/log/sshbouncer.log",
     "log_level": "INFO",
     "cooldown_minutes": 10
 }

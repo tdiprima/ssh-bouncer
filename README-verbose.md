@@ -1,6 +1,6 @@
-# 🛡️ SSHGuardian — Real-Time SSH Intrusion Detection for Linux
+# 🛡️ SSHBouncer — Real-Time SSH Intrusion Detection for Linux
 
-SSHGuardian is a lightweight, real-time intrusion detection tool for monitoring SSH authentication activity on Ubuntu/Linux servers.
+SSHBouncer is a lightweight, real-time intrusion detection tool for monitoring SSH authentication activity on Ubuntu/Linux servers.
 
 It focuses on **early visibility** — detecting failed login bursts and suspicious SSH activity *as it starts*, then sending immediate (optional) email alerts. Optional IP blocking via UFW or iptables can be enabled, but **visibility always comes first**.
 
@@ -37,11 +37,11 @@ cd SSH-Guardian
 sudo python3 install.py
 
 # 3. Start the service
-sudo systemctl start sshguardian
-sudo systemctl enable sshguardian
+sudo systemctl start sshbouncer
+sudo systemctl enable sshbouncer
 
 # 4. Watch it work
-sudo journalctl -u sshguardian -f
+sudo journalctl -u sshbouncer -f
 ```
 
 ---
@@ -49,8 +49,8 @@ sudo journalctl -u sshguardian -f
 ## Project Structure
 
 ```
-sshguardian/
-├── sshguardian.py        # Main monitoring daemon
+sshbouncer/
+├── sshbouncer.py        # Main monitoring daemon
 ├── install.py            # Interactive installer / uninstaller
 ├── test_sim.py           # Attack simulation + self-test
 ├── config.example.json   # Example configuration
@@ -86,11 +86,11 @@ Files are installed to:
 
 | Path | Purpose |
 |---|---|
-| `/opt/sshguardian/sshguardian.py` | Main script |
-| `/etc/sshguardian/config.json` | Configuration (mode 600) |
-| `/var/log/sshguardian.log` | Application log |
-| `/var/lib/sshguardian/state.json` | Persistent state |
-| `/etc/systemd/system/sshguardian.service` | Systemd unit |
+| `/opt/sshbouncer/sshbouncer.py` | Main script |
+| `/etc/sshbouncer/config.json` | Configuration (mode 600) |
+| `/var/log/sshbouncer.log` | Application log |
+| `/var/lib/sshbouncer/state.json` | Persistent state |
+| `/etc/systemd/system/sshbouncer.service` | Systemd unit |
 
 ### Uninstall
 
@@ -104,7 +104,7 @@ This stops the service, removes program files, and keeps your config/logs (tells
 
 ## Configuration
 
-Edit `/etc/sshguardian/config.json` (created by the installer) or copy and edit `config.example.json`.
+Edit `/etc/sshbouncer/config.json` (created by the installer) or copy and edit `config.example.json`.
 
 ### All Settings
 
@@ -125,7 +125,7 @@ Edit `/etc/sshguardian/config.json` (created by the installer) or copy and edit 
 | `smtp_user` | string | `""` | SMTP auth username (blank = no auth) |
 | `smtp_pass` | string | `""` | SMTP auth password |
 | `whitelist` | list | `["127.0.0.1"]` | IPs that are never alerted or blocked |
-| `log_file` | string | `"/var/log/sshguardian.log"` | SSHGuardian's own log |
+| `log_file` | string | `"/var/log/sshbouncer.log"` | SSHBouncer's own log |
 | `log_level` | string | `"INFO"` | `DEBUG`, `INFO`, `WARNING`, `ERROR` |
 | `cooldown_minutes` | int | `10` | Minimum time between repeat alerts for same IP |
 
@@ -167,7 +167,7 @@ Edit `/etc/sshguardian/config.json` (created by the installer) or copy and edit 
 After editing config, restart the service:
 
 ```bash
-sudo systemctl restart sshguardian
+sudo systemctl restart sshbouncer
 ```
 
 ---
@@ -178,25 +178,25 @@ sudo systemctl restart sshguardian
 
 ```bash
 # Start / stop / restart
-sudo systemctl start sshguardian
-sudo systemctl stop sshguardian
-sudo systemctl restart sshguardian
+sudo systemctl start sshbouncer
+sudo systemctl stop sshbouncer
+sudo systemctl restart sshbouncer
 
 # Enable on boot
-sudo systemctl enable sshguardian
+sudo systemctl enable sshbouncer
 
 # Check service status
-sudo systemctl status sshguardian
+sudo systemctl status sshbouncer
 ```
 
 ### Viewing Logs
 
 ```bash
 # Live follow (systemd journal)
-sudo journalctl -u sshguardian -f
+sudo journalctl -u sshbouncer -f
 
-# SSHGuardian's own log file
-sudo tail -f /var/log/sshguardian.log
+# SSHBouncer's own log file
+sudo tail -f /var/log/sshbouncer.log
 ```
 
 ### Threat Status Table
@@ -205,12 +205,12 @@ View a summary of all tracked IPs, fail counts, and block status:
 
 ```bash
 # Static snapshot (can run anytime)
-sudo python3 /opt/sshguardian/sshguardian.py --status
+sudo python3 /opt/sshbouncer/sshbouncer.py --status
 ```
 
 ```bash
 # Live status while running (send SIGUSR1)
-sudo kill -USR1 $(pgrep -f sshguardian.py)
+sudo kill -USR1 $(pgrep -f sshbouncer.py)
 ```
 
 ### Dry-Run Mode
@@ -218,31 +218,31 @@ sudo kill -USR1 $(pgrep -f sshguardian.py)
 Full monitoring with no blocking actions taken — safe for testing:
 
 ```bash
-sudo python3 /opt/sshguardian/sshguardian.py --dry-run
+sudo python3 /opt/sshbouncer/sshbouncer.py --dry-run
 ```
 
 ### Running Directly (Without Systemd)
 
 ```bash
 # With default config location
-sudo python3 sshguardian.py
+sudo python3 sshbouncer.py
 
 # With custom config
-sudo python3 sshguardian.py -c /path/to/config.json
+sudo python3 sshbouncer.py -c /path/to/config.json
 
 # Dry-run + custom config
-sudo python3 sshguardian.py -c /path/to/config.json --dry-run
+sudo python3 sshbouncer.py -c /path/to/config.json --dry-run
 ```
 
 ---
 
 ## Testing
 
-SSHGuardian includes a simulation script that generates realistic SSH log entries so you can verify detection works before deploying.
+SSHBouncer includes a simulation script that generates realistic SSH log entries so you can verify detection works before deploying.
 
 ### Self-Test (Recommended)
 
-Runs SSHGuardian and the simulator together, then reports pass/fail:
+Runs SSHBouncer and the simulator together, then reports pass/fail:
 
 ```bash
 sudo python3 test_sim.py --self-test
@@ -251,11 +251,11 @@ sudo python3 test_sim.py --self-test
 Expected output:
 
 ```
-═══ SSHGuardian Self-Test ═══
+═══ SSHBouncer Self-Test ═══
 
-  Starting SSHGuardian (dry-run)...
+  Starting SSHBouncer (dry-run)...
 
-═══ SSHGuardian Test Simulation ═══
+═══ SSHBouncer Test Simulation ═══
 
   ▸ Scenario 1: Slow probe (below threshold)
       FAIL  admin@10.0.0.50
@@ -280,8 +280,8 @@ Expected output:
 If you prefer to watch the detection happen live:
 
 ```bash
-# Terminal 1 — start SSHGuardian on the fake log
-sudo python3 sshguardian.py -c /tmp/sshguardian_test_config.json --dry-run
+# Terminal 1 — start SSHBouncer on the fake log
+sudo python3 sshbouncer.py -c /tmp/sshbouncer_test_config.json --dry-run
 
 # Terminal 2 — generate fake attacks
 python3 test_sim.py
@@ -343,7 +343,7 @@ python3 test_sim.py
 
 ## Real-World Workflow
 
-When SSHGuardian fires an alert, the recommended workflow is:
+When SSHBouncer fires an alert, the recommended workflow is:
 
 1. **Receive the alert** (email or journal log)
 2. **Capture system state** immediately (use a tool like your Incident Snapshot tool to preserve evidence before logs rotate)
@@ -351,7 +351,7 @@ When SSHGuardian fires an alert, the recommended workflow is:
 4. **Decide** — escalate, permanently block, or dismiss
 5. **Harden** — update firewall rules, disable password auth, add to permanent blocklist
 
-SSHGuardian gives you the **early warning** so you can act before evidence disappears.
+SSHBouncer gives you the **early warning** so you can act before evidence disappears.
 
 ---
 
@@ -370,7 +370,7 @@ SSHGuardian gives you the **early warning** so you can act before evidence disap
 A: Not if you whitelist your IP. Blocking is disabled by default. When you enable it, always add your IP to the `whitelist` array first.
 
 **Q: Does this replace fail2ban?**  
-A: It can, for SSH-specific monitoring. SSHGuardian is simpler, lighter, and focused on visibility first. fail2ban is more mature and covers more services. Use whichever fits your needs.
+A: It can, for SSH-specific monitoring. SSHBouncer is simpler, lighter, and focused on visibility first. fail2ban is more mature and covers more services. Use whichever fits your needs.
 
 **Q: What Python version do I need?**  
 A: Python 3.8+ (ships with Ubuntu 20.04+). No external packages required.
@@ -382,7 +382,7 @@ A: Yes. It will still detect and alert on failed attempts — bots don't know yo
 A: Run the self-test with email enabled in your config. The brute-force simulation will trigger a real alert email.
 
 **Q: What about IPv6?**  
-A: The current regex patterns match IPv4 addresses. IPv6 support can be added by extending the patterns in `sshguardian.py`.
+A: The current regex patterns match IPv4 addresses. IPv6 support can be added by extending the patterns in `sshbouncer.py`.
 
 ---
 
