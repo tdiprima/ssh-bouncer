@@ -6,7 +6,7 @@ A lightweight, dependency-free daemon that monitors SSH authentication logs in r
 
 Covers the pre-authentication attack surface: threshold-based detection per source IP, optional firewall enforcement, state persistence across restarts, and log rotation handling — with zero external dependencies.
 
-GitHub: [https://github.com/tdiprima/SSH-Guardian](https://github.com/tdiprima/SSH-Guardian)
+GitHub: [https://github.com/tdiprima/ssh-bouncer](https://github.com/tdiprima/ssh-bouncer)
 
 ---
 
@@ -56,8 +56,8 @@ When the threshold is exceeded:
 ## 🚀 Installation
 
 ```bash
-git clone https://github.com/tdiprima/SSH-Guardian
-cd SSH-Guardian
+git clone https://github.com/tdiprima/ssh-bouncer
+cd ssh-bouncer
 sudo python3 install.py
 sudo systemctl enable sshguardian
 sudo systemctl start sshguardian
