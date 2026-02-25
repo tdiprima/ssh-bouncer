@@ -1,4 +1,4 @@
-# 🛡️ SSH Guardian
+# 🛡️ SSH Bouncer
 
 **Real-Time SSH Brute-Force Detection (Python, Linux, Systemd)**
 
