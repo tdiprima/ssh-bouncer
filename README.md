@@ -1,10 +1,10 @@
 # 🛡️ SSH Guardian
 
-**Production-Ready Real-Time SSH Intrusion Detection (Python, Linux, Systemd)**
+**Real-Time SSH Brute-Force Detection (Python, Linux, Systemd)**
 
-A lightweight, dependency-free intrusion detection daemon for monitoring SSH authentication activity on Linux servers.
+A lightweight, dependency-free daemon that monitors SSH authentication logs in real-time and alerts on brute-force activity.
 
-Built with production deployment in mind: systemd integration, state persistence, log rotation handling, optional firewall enforcement, and zero external dependencies.
+Covers the pre-authentication attack surface: threshold-based detection per source IP, optional firewall enforcement, state persistence across restarts, and log rotation handling — with zero external dependencies.
 
 GitHub: [https://github.com/tdiprima/SSH-Guardian](https://github.com/tdiprima/SSH-Guardian)
 
@@ -93,6 +93,21 @@ Enables deterministic validation before production deployment.
 * Explicit configuration
 * Operational transparency
 * Safe defaults (blocking disabled by default)
+
+---
+
+## 🚧 Scope & Limitations
+
+SSHGuardian targets **pre-authentication brute-force attacks** — repeated failed logins from a single IP. It is not a full SSH behavioral analysis tool.
+
+It does **not** currently detect:
+
+* Anomalies in successful logins (new source IP for a known user, unusual hours, impossible travel)
+* Post-authentication session activity
+* IPv6 source addresses
+* Attacks distributed across many source IPs (low-and-slow or botnet patterns)
+
+For deeper behavioral coverage, pair with `auditd`, a SIEM, or a UEBA tool. For a more established alternative in the same pre-auth space, see [fail2ban](https://github.com/fail2ban/fail2ban).
 
 ---
 
