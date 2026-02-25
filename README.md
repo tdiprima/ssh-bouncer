@@ -12,7 +12,7 @@ GitHub: [https://github.com/tdiprima/ssh-bouncer](https://github.com/tdiprima/ss
 
 ## 📌 Overview
 
-SSHGuardian provides early detection of SSH brute-force activity by continuously monitoring authentication logs and applying threshold-based detection per source IP.
+SSH Bouncer provides early detection of SSH brute-force activity by continuously monitoring authentication logs and applying threshold-based detection per source IP.
 
 It prioritizes **operational visibility first**, with optional automated response (IP blocking).
 
@@ -98,7 +98,7 @@ Enables deterministic validation before production deployment.
 
 ## 🚧 Scope & Limitations
 
-SSHGuardian targets **pre-authentication brute-force attacks** — repeated failed logins from a single IP. It is not a full SSH behavioral analysis tool.
+SSH Bouncer targets **pre-authentication brute-force attacks** — repeated failed logins from a single IP. It is not a full SSH behavioral analysis tool.
 
 It does **not** currently detect:
 
