@@ -105,7 +105,7 @@ def create_directories():
 
 
 def copy_application_files():
-    source_dir = Path(__file__).resolve().parent
+    source_dir = Path(__file__).resolve().parent / "src"
 
     for filename in APP_FILES:
         src = source_dir / filename
