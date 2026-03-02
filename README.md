@@ -23,7 +23,7 @@ Optional automatic IP blocking.
 
 Built for Linux servers (Ubuntu-focused).
 
-## Why It’s Interesting
+## Why It's Interesting
 
 * Zero dependencies (Python standard library only)
 * Sliding window detection algorithm
