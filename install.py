@@ -13,31 +13,23 @@ import os
 import shutil
 import subprocess
 import sys
-from contextlib import suppress
 from pathlib import Path
+from typing import Dict
 
-# ─── Paths ────────────────────────────────────────────────────────────────────
-INSTALL_DIR = "/opt/sshbouncer"
-CONFIG_DIR = "/etc/sshbouncer"
-CONFIG_FILE = f"{CONFIG_DIR}/config.json"
-LOG_DIR = "/var/log"
-LOG_FILE = f"{LOG_DIR}/sshbouncer.log"
-STATE_DIR = "/var/lib/sshbouncer"
-SYSTEMD_FILE = "/etc/systemd/system/sshbouncer.service"
-SCRIPT_NAME = "sshbouncer.py"
 
-# ─── Colors ───────────────────────────────────────────────────────────────────
-R = "\033[91m"
-G = "\033[92m"
-Y = "\033[93m"
-C = "\033[96m"
-B = "\033[1m"
-D = "\033[2m"
-X = "\033[0m"
+# ─────────────────────────────────────────────
+# Constants
+# ─────────────────────────────────────────────
+INSTALL_DIR = Path("/opt/sshbouncer")
+CONFIG_DIR = Path("/etc/sshbouncer")
+CONFIG_FILE = CONFIG_DIR / "config.json"
+STATE_DIR = Path("/var/lib/sshbouncer")
+SYSTEMD_FILE = Path("/etc/systemd/system/sshbouncer.service")
 
-# ─── Default config ──────────────────────────────────────────────────────────
+APP_FILES = ["main.py", "parser.py", "engine.py", "actions.py"]
+
+
 DEFAULT_CONFIG = {
-    "auth_log": "auto",
     "threshold": 5,
     "window_seconds": 300,
     "block_enabled": False,
@@ -45,219 +37,197 @@ DEFAULT_CONFIG = {
     "block_duration_minutes": 60,
     "email_enabled": False,
     "email_to": "",
-    "email_from": "",
     "smtp_server": "localhost",
     "smtp_port": 25,
     "smtp_tls": False,
     "smtp_user": "",
     "smtp_pass": "",
     "whitelist": ["127.0.0.1"],
-    "log_file": LOG_FILE,
-    "log_level": "INFO",
-    "cooldown_minutes": 10,
 }
 
-# ─── Systemd unit ─────────────────────────────────────────────────────────────
-SYSTEMD_UNIT = f"""[Unit]
+
+# ─────────────────────────────────────────────
+# Utilities
+# ─────────────────────────────────────────────
+def require_root():
+    if os.geteuid() != 0:
+        print("Error: must run installer as root.")
+        sys.exit(1)
+
+
+def ask(prompt: str, default: str = "") -> str:
+    value = input(f"{prompt} [{default}]: ").strip()
+    return value or default
+
+
+def ask_yes_no(prompt: str, default: bool = False) -> bool:
+    hint = "Y/n" if default else "y/N"
+    value = input(f"{prompt} ({hint}): ").strip().lower()
+    if not value:
+        return default
+    return value in ("y", "yes")
+
+
+# ─────────────────────────────────────────────
+# Config Collection
+# ─────────────────────────────────────────────
+def collect_config() -> Dict:
+    config = DEFAULT_CONFIG.copy()
+
+    config["threshold"] = int(
+        ask("Failed login threshold", str(config["threshold"]))
+    )
+
+    config["window_seconds"] = int(
+        ask("Detection window (seconds)", str(config["window_seconds"]))
+    )
+
+    config["block_enabled"] = ask_yes_no("Enable IP blocking?", False)
+
+    if config["block_enabled"]:
+        config["block_method"] = ask("Block method (ufw/iptables)", "ufw")
+
+    config["email_enabled"] = ask_yes_no("Enable email alerts?", False)
+
+    if config["email_enabled"]:
+        config["email_to"] = ask("Alert email")
+        config["smtp_server"] = ask("SMTP server", "localhost")
+
+    return config
+
+
+# ─────────────────────────────────────────────
+# File Installation
+# ─────────────────────────────────────────────
+def create_directories():
+    for path in (INSTALL_DIR, CONFIG_DIR, STATE_DIR):
+        path.mkdir(parents=True, exist_ok=True)
+
+
+def copy_application_files():
+    source_dir = Path(__file__).resolve().parent
+
+    for filename in APP_FILES:
+        src = source_dir / filename
+        dst = INSTALL_DIR / filename
+
+        if not src.exists():
+            print(f"Missing required file: {filename}")
+            sys.exit(1)
+
+        shutil.copy2(src, dst)
+        os.chmod(dst, 0o755)
+        print(f"Installed {dst}")
+
+
+def write_config(config: Dict):
+    if CONFIG_FILE.exists():
+        overwrite = ask_yes_no("Config exists. Overwrite?", False)
+        if not overwrite:
+            print("Keeping existing config.")
+            return
+
+    with open(CONFIG_FILE, "w") as f:
+        json.dump(config, f, indent=2)
+
+    os.chmod(CONFIG_FILE, 0o600)
+    print(f"Config written to {CONFIG_FILE}")
+
+
+# ─────────────────────────────────────────────
+# Systemd Setup
+# ─────────────────────────────────────────────
+def build_systemd_unit() -> str:
+    return f"""[Unit]
 Description=SSHBouncer — Real-Time SSH Intrusion Detection
 After=network.target sshd.service
-Wants=sshd.service
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/python3 {INSTALL_DIR}/{SCRIPT_NAME} -c {CONFIG_FILE}
+ExecStart=/usr/bin/python3 {INSTALL_DIR}/main.py -c {CONFIG_FILE}
 Restart=on-failure
 RestartSec=5
-StandardOutput=journal
-StandardError=journal
-SyslogIdentifier=sshbouncer
 
 [Install]
 WantedBy=multi-user.target
 """
 
 
-def banner():
-    print(
-        f"""
-{B}{C}╔══════════════════════════════════════════════════╗
-║          SSHBouncer  —  Installer               ║
-║    Real-Time SSH Intrusion Detection for Linux    ║
-╚══════════════════════════════════════════════════╝{X}
-"""
-    )
+def install_systemd_service():
+    SYSTEMD_FILE.write_text(build_systemd_unit())
+    subprocess.run(["systemctl", "daemon-reload"], check=False)
+    print("Systemd service installed.")
 
 
-def check_root():
-    if os.geteuid() != 0:
-        print(f"{R}Error: installer must be run as root.{X}")
-        print("  Try: sudo python3 install.py")
-        sys.exit(1)
+def enable_service():
+    subprocess.run(["systemctl", "enable", "sshbouncer"], check=False)
+    print("Service enabled.")
 
 
-def ask(prompt, default=""):
-    """Prompt user with a default value."""
-    if default:
-        val = input(f"  {prompt} [{default}]: ").strip()
-        return val or default
-    return input(f"  {prompt}: ").strip()
+def start_service():
+    subprocess.run(["systemctl", "start", "sshbouncer"], check=False)
+    print("Service started.")
 
 
-def ask_yn(prompt, default=False):
-    """Yes/No prompt."""
-    hint = "[Y/n]" if default else "[y/N]"
-    val = input(f"  {prompt} {hint}: ").strip().lower()
-    if not val:
-        return default
-    return val in ("y", "yes")
+def stop_and_disable_service():
+    subprocess.run(["systemctl", "stop", "sshbouncer"], check=False)
+    subprocess.run(["systemctl", "disable", "sshbouncer"], check=False)
 
 
-def install():
-    banner()
-    check_root()
+def remove_installed_files():
+    if SYSTEMD_FILE.exists():
+        SYSTEMD_FILE.unlink()
 
-    print(f"{B}Step 1: Configuration{X}\n")
-
-    config = DEFAULT_CONFIG.copy()
-
-    # Threshold
-    t = ask("Failed login threshold before alert", str(config["threshold"]))
-    with suppress(ValueError):
-        config["threshold"] = int(t)
-
-    w = ask("Detection window (seconds)", str(config["window_seconds"]))
-    with suppress(ValueError):
-        config["window_seconds"] = int(w)
-
-    # Whitelist
-    wl = ask("Whitelisted IPs (comma-separated)", ", ".join(config["whitelist"]))
-    config["whitelist"] = [ip.strip() for ip in wl.split(",") if ip.strip()]
-
-    # Blocking
-    print()
-    config["block_enabled"] = ask_yn("Enable automatic IP blocking?", False)
-    if config["block_enabled"]:
-        method = ask("Block method (ufw / iptables)", config["block_method"])
-        config["block_method"] = method if method in ("ufw", "iptables") else "ufw"
-        dur = ask("Block duration (minutes)", str(config["block_duration_minutes"]))
-        with suppress(ValueError):
-            config["block_duration_minutes"] = int(dur)
-
-    # Email
-    print()
-    config["email_enabled"] = ask_yn("Enable email alerts?", False)
-    if config["email_enabled"]:
-        config["email_to"] = ask("Alert recipient email")
-        config["smtp_server"] = ask("SMTP server", config["smtp_server"])
-        port = ask("SMTP port", str(config["smtp_port"]))
-        with suppress(ValueError):
-            config["smtp_port"] = int(port)
-        config["smtp_tls"] = ask_yn("Use STARTTLS?", False)
-        config["smtp_user"] = ask("SMTP username (blank for none)", "")
-        if config["smtp_user"]:
-            config["smtp_pass"] = ask("SMTP password", "")
-        config["email_from"] = ask("From address", f"sshbouncer@{os.uname().nodename}")
-
-    # ── Create directories ──
-    print(f"\n{B}Step 2: Installing files{X}\n")
-
-    Path(INSTALL_DIR).mkdir(parents=True, exist_ok=True)
-    Path(CONFIG_DIR).mkdir(parents=True, exist_ok=True)
-    Path(STATE_DIR).mkdir(parents=True, exist_ok=True)
-
-    # Copy script
-    src = os.path.join(os.path.dirname(os.path.abspath(__file__)), SCRIPT_NAME)
-    dst = os.path.join(INSTALL_DIR, SCRIPT_NAME)
-    if os.path.isfile(src):
-        shutil.copy2(src, dst)
-        os.chmod(dst, 0o755)
-        print(f"  {G}✓{X}  Installed {dst}")
-    else:
-        print(f"  {R}✗{X}  Could not find {src}")
-        print(f"      Make sure {SCRIPT_NAME} is in the same directory as install.py")
-        sys.exit(1)
-
-    # Write config (don't overwrite existing without asking)
-    if Path(CONFIG_FILE).is_file():
-        if ask_yn(f"  Config already exists at {CONFIG_FILE}. Overwrite?", False):
-            with open(CONFIG_FILE, "w") as f:
-                json.dump(config, f, indent=2)
-            print(f"  {G}✓{X}  Config updated: {CONFIG_FILE}")
-        else:
-            print(f"  {Y}⏭{X}  Keeping existing config")
-    else:
-        with open(CONFIG_FILE, "w") as f:
-            json.dump(config, f, indent=2)
-        os.chmod(CONFIG_FILE, 0o600)
-        print(f"  {G}✓{X}  Config created: {CONFIG_FILE} (mode 600)")
-
-    # Write systemd unit
-    Path(SYSTEMD_FILE).write_text(SYSTEMD_UNIT)
-    print(f"  {G}✓{X}  Systemd service: {SYSTEMD_FILE}")
-
-    subprocess.run(["systemctl", "daemon-reload"], capture_output=True)
-    print(f"  {G}✓{X}  systemctl daemon-reload")
-
-    # ── Done ──
-    print(f"\n{B}Step 3: Next steps{X}\n")
-    print(f"  Start now:           {C}sudo systemctl start sshbouncer{X}")
-    print(f"  Enable on boot:      {C}sudo systemctl enable sshbouncer{X}")
-    print(f"  Check status:        {C}sudo systemctl status sshbouncer{X}")
-    print(f"  View live log:       {C}sudo journalctl -u sshbouncer -f{X}")
-    print(
-        f"  View threat table:   {C}sudo python3 {INSTALL_DIR}/{SCRIPT_NAME} --status{X}"
-    )
-    print(f"  Edit config:         {C}sudo nano {CONFIG_FILE}{X}")
-    print(
-        f"  Send SIGUSR1 for live status:  {C}sudo kill -USR1 $(pidof -x sshbouncer.py){X}"
-    )
-    print(f"\n  {G}{B}Installation complete!{X}\n")
-
-
-def uninstall():
-    banner()
-    check_root()
-
-    print(f"{Y}Uninstalling SSHBouncer...{X}\n")
-
-    # Stop service
-    subprocess.run(["systemctl", "stop", "sshbouncer"], capture_output=True)
-    subprocess.run(["systemctl", "disable", "sshbouncer"], capture_output=True)
-    print(f"  {G}✓{X}  Service stopped and disabled")
-
-    # Remove files
-    for path in (SYSTEMD_FILE,):
-        if Path(path).is_file():
-            Path(path).unlink()
-            print(f"  {G}✓{X}  Removed {path}")
-
-    subprocess.run(["systemctl", "daemon-reload"], capture_output=True)
-
-    if Path(INSTALL_DIR).is_dir():
+    if INSTALL_DIR.exists():
         shutil.rmtree(INSTALL_DIR)
-        print(f"  {G}✓{X}  Removed {INSTALL_DIR}")
 
-    if Path(STATE_DIR).is_dir():
+    if STATE_DIR.exists():
         shutil.rmtree(STATE_DIR)
-        print(f"  {G}✓{X}  Removed {STATE_DIR}")
 
-    # Keep config and logs — user data
-    print(f"\n  {Y}Kept (user data):{X}")
-    print(f"    Config:  {CONFIG_DIR}")
-    print(f"    Log:     {LOG_FILE}")
-    print(f"\n  To remove everything:  {D}sudo rm -rf {CONFIG_DIR} {LOG_FILE}{X}")
-    print(f"\n  {G}{B}Uninstall complete.{X}\n")
+    subprocess.run(["systemctl", "daemon-reload"], check=False)
 
 
+# ─────────────────────────────────────────────
+# High-Level Actions
+# ─────────────────────────────────────────────
+def run_install():
+    require_root()
+
+    config = collect_config()
+    create_directories()
+    copy_application_files()
+    write_config(config)
+    install_systemd_service()
+
+    if ask_yes_no("Start service now?", True):
+        enable_service()
+        start_service()
+
+    print("Installation complete.")
+
+
+def run_uninstall():
+    require_root()
+
+    stop_and_disable_service()
+    remove_installed_files()
+
+    print("Uninstall complete.")
+    print("Config and logs were preserved.")
+
+
+# ─────────────────────────────────────────────
+# Entry Point
+# ─────────────────────────────────────────────
 def main():
     parser = argparse.ArgumentParser(description="SSHBouncer Installer")
-    parser.add_argument("--uninstall", action="store_true", help="Remove SSHBouncer")
+    parser.add_argument("--uninstall", action="store_true")
     args = parser.parse_args()
 
     if args.uninstall:
-        uninstall()
+        run_uninstall()
     else:
-        install()
+        run_install()
 
 
 if __name__ == "__main__":
