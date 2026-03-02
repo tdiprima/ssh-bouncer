@@ -26,7 +26,7 @@ CONFIG_FILE = CONFIG_DIR / "config.json"
 STATE_DIR = Path("/var/lib/sshbouncer")
 SYSTEMD_FILE = Path("/etc/systemd/system/sshbouncer.service")
 
-APP_FILES = ["main.py", "parser.py", "engine.py", "actions.py"]
+APP_FILES = ["sshbouncer.py", "parser.py", "engine.py", "actions.py"]
 
 
 DEFAULT_CONFIG = {
@@ -144,7 +144,7 @@ After=network.target sshd.service
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/python3 {INSTALL_DIR}/main.py -c {CONFIG_FILE}
+ExecStart=/usr/bin/python3 {INSTALL_DIR}/sshbouncer.py -c {CONFIG_FILE}
 Restart=on-failure
 RestartSec=5
 
