@@ -1,4 +1,4 @@
-# 🛡️ SSH Bouncer
+# 🛡 SSH Bouncer
 
 **Real-Time SSH Brute-Force Detection (Python + Linux + systemd)**
 
@@ -54,7 +54,7 @@ sudo systemctl enable sshbouncer
 sudo systemctl start sshbouncer
 ```
 
-## ⚠️ Disclaimer
+## ⚠ Disclaimer
 
 This software is provided as-is, without warranty.  
 Always test in a staging or controlled environment before deploying to production infrastructure.

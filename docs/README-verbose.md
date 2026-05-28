@@ -1,4 +1,4 @@
-# 🛡️ SSHBouncer — Real-Time SSH Intrusion Detection for Linux
+# 🛡 SSHBouncer — Real-Time SSH Intrusion Detection for Linux
 
 SSHBouncer is a lightweight, real-time intrusion detection tool for monitoring SSH authentication activity on Ubuntu/Linux servers.
 
@@ -164,7 +164,7 @@ Edit `/etc/sshbouncer/config.json` (created by the installer) or copy and edit `
 }
 ```
 
-> ⚠️ **Always whitelist your own IP before enabling blocking.** If you lock yourself out, you'll need console/out-of-band access to recover.
+> ⚠ **Always whitelist your own IP before enabling blocking.** If you lock yourself out, you'll need console/out-of-band access to recover.
 
 After editing config, restart the service:
 
