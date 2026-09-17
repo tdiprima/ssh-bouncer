@@ -1,62 +1,90 @@
 # 🛡 SSH Bouncer
 
-**Real-Time SSH Brute-Force Detection (Python + Linux + systemd)**
+Bots are out here spamming your SSH login 24/7. SSH Bouncer watches the log, catches the sus IPs, and (if you want) yeets them off your firewall. No pip installs. No drama. Just Python.
 
-GitHub: [https://github.com/tdiprima/ssh-bouncer](https://github.com/tdiprima/ssh-bouncer)
+Works on Ubuntu, Debian, RHEL, and Rocky. You need root. That's it.
 
-## What It Is
-
-A lightweight Python daemon that watches SSH logs in real time and detects brute-force attacks.
-
-No third-party packages.  
-Runs as a systemd service.  
-Optional automatic IP blocking.
-
-## What It Does
-
-* Monitors `/var/log/auth.log` live
-* Tracks failed login attempts per IP
-* Triggers alerts when a threshold is exceeded
-* Optionally blocks attacking IPs (UFW / iptables)
-* Persists state across restarts
-* Handles log rotation
-
-Built for Linux servers (Ubuntu-focused).
-
-## Why It's Interesting
-
-* Zero dependencies (Python standard library only)
-* Sliding window detection algorithm
-* Firewall automation with auto-expiring bans
-* Dry-run mode for safe testing
-* Designed with operational visibility first
-
-## Tech Stack
-
-* Python 3.11+
-* Linux (Ubuntu 20.04+)
-* systemd
-* UFW / iptables
-
-## What It Covers
-
-Detects repeated failed SSH login attempts from the same IP (pre-auth brute force).
-
-Not a full SIEM. Not behavioral analytics. Focused and intentional.
-
-## Quick Start
+## Install it (fr, it's like 30 seconds)
 
 ```bash
 git clone https://github.com/tdiprima/ssh-bouncer
 cd ssh-bouncer
 sudo python3 install.py
-sudo systemctl enable sshbouncer
-sudo systemctl start sshbouncer
 ```
 
-## ⚠ Disclaimer
+The installer asks you a few questions. Vibes for each one:
 
-This software is provided as-is, without warranty.  
-Always test in a staging or controlled environment before deploying to production infrastructure.
+| It asks... | What to say |
+|---|---|
+| Failed login threshold | How many fails before it flags an IP. `5` is fine. |
+| Detection window (seconds) | How long those fails have to happen in. `300` is fine. |
+| Whitelisted IPs | **PUT YOUR OWN IP HERE.** Comma-separated. Not doing this = you might lock yourself out. Not a vibe. |
+| Enable IP blocking? | Say `n` the first time. Watch it work before you let it swing. |
+| Enable email alerts? | `y` if you want emails. It'll ask for your SMTP stuff. |
+| Start service now? | `y` |
 
-<br>
+If you turned on email with a password, set it as an env var so it isn't chilling in a file:
+
+```bash
+sudo systemctl edit sshbouncer
+```
+
+Then add:
+
+```ini
+[Service]
+Environment=SSHBOUNCER_SMTP_PASS=your-app-password
+```
+
+## Run it
+
+Installer already started it. Confirm it's alive:
+
+```bash
+sudo systemctl status sshbouncer
+```
+
+Watch it cook in real time:
+
+```bash
+sudo journalctl -u sshbouncer -f
+```
+
+See who's been trying to get in:
+
+```bash
+sudo python3 /opt/sshbouncer/sshbouncer.py --status
+```
+
+## Change your mind later
+
+Edit the config:
+
+```bash
+sudo nano /etc/sshbouncer/config.json
+sudo systemctl restart sshbouncer
+```
+
+Ready to actually block people? Flip `"block_enabled": false` to `true`. Double check your IP is in `"whitelist"` first. Seriously.
+
+## Test it without touching anything real
+
+Fake attack, fake log, zero firewall changes. No sudo needed:
+
+```bash
+python3 src/test_sim.py --self-test
+```
+
+All green checkmarks = you're good.
+
+## Uninstall
+
+```bash
+sudo python3 install.py --uninstall
+```
+
+Keeps your config and logs in case you come back. We know you will.
+
+## ⚠ Real talk
+
+No warranty. Test on a box you don't care about first. If you enable blocking without whitelisting yourself and get locked out, that's on you bestie.

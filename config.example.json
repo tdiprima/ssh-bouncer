@@ -25,5 +25,6 @@
 
     "log_file": "/var/log/sshbouncer.log",
     "log_level": "INFO",
-    "cooldown_minutes": 10
+    "cooldown_minutes": 10,
+    "state_file": "/var/lib/sshbouncer/state.json"
 }

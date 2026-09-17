@@ -26,10 +26,19 @@ CONFIG_FILE = CONFIG_DIR / "config.json"
 STATE_DIR = Path("/var/lib/sshbouncer")
 SYSTEMD_FILE = Path("/etc/systemd/system/sshbouncer.service")
 
-APP_FILES = ["sshbouncer.py", "parser.py", "engine.py", "actions.py"]
+APP_FILES = [
+    "sshbouncer.py",
+    "parser.py",
+    "engine.py",
+    "actions.py",
+    "config.py",
+    "state.py",
+    "logfollow.py",
+]
 
 
 DEFAULT_CONFIG = {
+    "auth_log": "auto",
     "threshold": 5,
     "window_seconds": 300,
     "block_enabled": False,
@@ -37,12 +46,17 @@ DEFAULT_CONFIG = {
     "block_duration_minutes": 60,
     "email_enabled": False,
     "email_to": "",
+    "email_from": "",
     "smtp_server": "localhost",
     "smtp_port": 25,
     "smtp_tls": False,
     "smtp_user": "",
     "smtp_pass": "",
     "whitelist": ["127.0.0.1"],
+    "log_file": "/var/log/sshbouncer.log",
+    "log_level": "INFO",
+    "cooldown_minutes": 10,
+    "state_file": str(STATE_DIR / "state.json"),
 }
 
 
@@ -82,16 +96,28 @@ def collect_config() -> Dict:
         ask("Detection window (seconds)", str(config["window_seconds"]))
     )
 
+    whitelist = ask("Whitelisted IPs/CIDRs (comma-separated)", ", ".join(config["whitelist"]))
+    config["whitelist"] = [entry.strip() for entry in whitelist.split(",") if entry.strip()]
+
     config["block_enabled"] = ask_yes_no("Enable IP blocking?", False)
 
     if config["block_enabled"]:
         config["block_method"] = ask("Block method (ufw/iptables)", "ufw")
+        config["block_duration_minutes"] = int(
+            ask("Block duration (minutes)", str(config["block_duration_minutes"]))
+        )
 
     config["email_enabled"] = ask_yes_no("Enable email alerts?", False)
 
     if config["email_enabled"]:
         config["email_to"] = ask("Alert email")
+        config["email_from"] = ask("Sender address (blank = sshbouncer@hostname)", "")
         config["smtp_server"] = ask("SMTP server", "localhost")
+        config["smtp_port"] = int(ask("SMTP port", str(config["smtp_port"])))
+        config["smtp_tls"] = ask_yes_no("Use STARTTLS?", False)
+        config["smtp_user"] = ask("SMTP username (blank = no auth)", "")
+        print("SMTP password: set SSHBOUNCER_SMTP_PASS in the service environment, "
+              "or add smtp_pass to the config file after install.")
 
     return config
 
