@@ -2,7 +2,7 @@
 
 Bots are out here spamming your SSH login 24/7. SSH Bouncer watches the log, catches the sus IPs, and (if you want) yeets them off your firewall. No pip installs. No drama. Just Python.
 
-Works on Ubuntu, Debian, RHEL, and Rocky. You need root. That's it.
+Works on Ubuntu, Debian, RHEL, and Rocky. You need root and Python 3.11+. That's it.
 
 ## Install it (fr, it's like 30 seconds)
 
@@ -18,8 +18,10 @@ The installer asks you a few questions. Vibes for each one:
 |---|---|
 | Failed login threshold | How many fails before it flags an IP. `5` is fine. |
 | Detection window (seconds) | How long those fails have to happen in. `300` is fine. |
-| Whitelisted IPs | **PUT YOUR OWN IP HERE.** Comma-separated. Not doing this = you might lock yourself out. Not a vibe. |
+| Whitelisted IPs/CIDRs | **PUT YOUR OWN IP HERE.** Comma-separated. Single IPs or CIDR ranges like `10.0.0.0/8`. Not doing this = you might lock yourself out. Not a vibe. |
 | Enable IP blocking? | Say `n` the first time. Watch it work before you let it swing. |
+| Block method (ufw/iptables) | Only asked if blocking is on. `ufw` on Ubuntu/Debian, `iptables` on RHEL/Rocky. |
+| Block duration (minutes) | Only asked if blocking is on. How long an IP stays blocked. `60` is fine. |
 | Enable email alerts? | `y` if you want emails. It'll ask for your SMTP stuff. |
 | Start service now? | `y` |
 
@@ -56,6 +58,13 @@ See who's been trying to get in:
 sudo python3 /opt/sshbouncer/sshbouncer.py --status
 ```
 
+Or poke the running service and it'll print the same table into the journal:
+
+```bash
+sudo systemctl kill --signal=SIGUSR1 sshbouncer
+sudo journalctl -u sshbouncer -n 20
+```
+
 ## Change your mind later
 
 Edit the config:
@@ -67,6 +76,8 @@ sudo systemctl restart sshbouncer
 
 Ready to actually block people? Flip `"block_enabled": false` to `true`. Double check your IP is in `"whitelist"` first. Seriously.
 
+Blocks aren't forever. Each one expires after `"block_duration_minutes"` (default `60`) and the firewall rule gets pulled automatically. On every startup SSH Bouncer compares its records against the live firewall: records for rules that vanished get dropped, and leftover `sshbouncer`-tagged rules with no record get adopted so they still expire on schedule.
+
 ## Test it without touching anything real
 
 Fake attack, fake log, zero firewall changes. No sudo needed:
@@ -76,6 +87,12 @@ python3 src/test_sim.py --self-test
 ```
 
 All green checkmarks = you're good.
+
+Hacking on the code? Run the unit tests too. Stdlib `unittest`, nothing to install:
+
+```bash
+python3 -m unittest discover tests
+```
 
 `--dry-run` mode never runs a firewall command, not for blocking and not for unblocking. It keeps its own state file (`state.dry-run.json` next to the real one) so a dry run can't mess with live records.
 
