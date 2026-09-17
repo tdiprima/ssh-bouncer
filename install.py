@@ -34,6 +34,8 @@ APP_FILES = [
     "config.py",
     "state.py",
     "logfollow.py",
+    "firewall.py",
+    "notify.py",
 ]
 
 
@@ -200,14 +202,41 @@ def stop_and_disable_service():
     subprocess.run(["systemctl", "disable", "sshbouncer"], check=False)
 
 
-def remove_installed_files():
+def load_firewall_lifecycle():
+    """Import FirewallLifecycle from the installed copy, falling back to the repo checkout."""
+    for candidate in (INSTALL_DIR, Path(__file__).resolve().parent / "src"):
+        if (candidate / "firewall.py").exists():
+            sys.path.insert(0, str(candidate))
+            break
+    from firewall import FirewallLifecycle
+    return FirewallLifecycle
+
+
+def remove_firewall_rules() -> bool:
+    """Delete every rule this program installed. Returns False if any rule could not be removed."""
+    FirewallLifecycle = load_firewall_lifecycle()
+    all_removed = True
+    for method in ("ufw", "iptables"):
+        if shutil.which(method) is None:
+            continue
+        removed, failed = FirewallLifecycle(method).remove_owned_rules()
+        for ip in removed:
+            print(f"Removed {method} rule for {ip}")
+        for ip in failed:
+            print(f"WARNING: could not remove {method} rule for {ip}", file=sys.stderr)
+        if failed:
+            all_removed = False
+    return all_removed
+
+
+def remove_installed_files(remove_state: bool):
     if SYSTEMD_FILE.exists():
         SYSTEMD_FILE.unlink()
 
     if INSTALL_DIR.exists():
         shutil.rmtree(INSTALL_DIR)
 
-    if STATE_DIR.exists():
+    if remove_state and STATE_DIR.exists():
         shutil.rmtree(STATE_DIR)
 
     subprocess.run(["systemctl", "daemon-reload"], check=False)
@@ -236,10 +265,14 @@ def run_uninstall():
     require_root()
 
     stop_and_disable_service()
-    remove_installed_files()
+    # Rules must go before the state that describes them; if any survive, keep the state as a record.
+    rules_removed = remove_firewall_rules()
+    remove_installed_files(remove_state=rules_removed)
 
     print("Uninstall complete.")
     print("Config and logs were preserved.")
+    if not rules_removed:
+        print(f"Some firewall rules remain; {STATE_DIR} was kept so they can be traced.", file=sys.stderr)
 
 
 # ─────────────────────────────────────────────

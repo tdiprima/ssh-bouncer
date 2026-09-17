@@ -77,13 +77,17 @@ python3 src/test_sim.py --self-test
 
 All green checkmarks = you're good.
 
+`--dry-run` mode never runs a firewall command, not for blocking and not for unblocking. It keeps its own state file (`state.dry-run.json` next to the real one) so a dry run can't mess with live records.
+
 ## Uninstall
 
 ```bash
 sudo python3 install.py --uninstall
 ```
 
-Keeps your config and logs in case you come back. We know you will.
+Stops the service, removes every firewall rule SSH Bouncer added (they're tagged `sshbouncer` so nothing else gets touched), then deletes the app. Keeps your config and logs in case you come back. We know you will.
+
+If a rule can't be removed, the state file in `/var/lib/sshbouncer` is kept so you can see what's still blocked.
 
 ## ⚠️ Real talk
 

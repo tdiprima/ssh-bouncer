@@ -1,5 +1,7 @@
-# Firewall + email. Nothing else.
+# Firewall commands + email. Nothing else. Rule ownership and lifecycle live in firewall.py.
 import logging
+import re
+import shlex
 import smtplib
 import socket
 import subprocess
@@ -10,6 +12,14 @@ logger = logging.getLogger("sshbouncer.actions")
 FIREWALL_COMMAND_TIMEOUT_SECONDS = 30
 SMTP_TIMEOUT_SECONDS = 30
 
+# Every rule this program installs carries this comment so it can be found again later.
+RULE_TAG = "sshbouncer"
+
+# "[ 3] Anywhere   DENY IN   1.2.3.4   # sshbouncer" from `ufw status numbered`.
+UFW_DENY_LINE = re.compile(
+    r"^\[\s*\d+\]\s+.+?\s+(?:DENY|REJECT)(?:\s+IN)?\s+(?P<source>\S+)(?:\s+#\s*(?P<comment>.*?))?\s*$"
+)
+
 
 class FirewallError(RuntimeError):
     """Raised when a firewall command fails or cannot be run."""
@@ -17,13 +27,24 @@ class FirewallError(RuntimeError):
 
 def build_block_command(ip: str, method: str) -> list:
     if method == "ufw":
-        return ["ufw", "insert", "1", "deny", "from", ip, "to", "any"]
+        return ["ufw", "insert", "1", "deny", "from", ip, "to", "any", "comment", RULE_TAG]
     if method == "iptables":
-        return ["iptables", "-I", "INPUT", "1", "-s", ip, "-j", "DROP"]
+        return ["iptables", "-I", "INPUT", "1", "-s", ip, "-m", "comment", "--comment", RULE_TAG,
+                "-j", "DROP"]
     raise ValueError("Unknown block method")
 
 
 def build_unblock_command(ip: str, method: str) -> list:
+    if method == "ufw":
+        return ["ufw", "delete", "deny", "from", ip, "to", "any", "comment", RULE_TAG]
+    if method == "iptables":
+        return ["iptables", "-D", "INPUT", "-s", ip, "-m", "comment", "--comment", RULE_TAG,
+                "-j", "DROP"]
+    raise ValueError("Unknown block method")
+
+
+def build_legacy_unblock_command(ip: str, method: str) -> list:
+    """Delete spec for rules installed by versions that did not tag rules."""
     if method == "ufw":
         return ["ufw", "delete", "deny", "from", ip, "to", "any"]
     if method == "iptables":
@@ -31,8 +52,58 @@ def build_unblock_command(ip: str, method: str) -> list:
     raise ValueError("Unknown block method")
 
 
-def run_firewall_command(cmd: list) -> None:
-    """Run a firewall command. Raises FirewallError on non-zero exit, timeout, or missing binary."""
+def build_list_command(method: str) -> list:
+    if method == "ufw":
+        return ["ufw", "status", "numbered"]
+    if method == "iptables":
+        return ["iptables", "-S", "INPUT"]
+    raise ValueError("Unknown block method")
+
+
+def parse_rule_listing(output: str, method: str) -> dict:
+    """Map source IP -> True when the deny rule carries our tag, False when it does not."""
+    if method == "ufw":
+        return parse_ufw_listing(output)
+    if method == "iptables":
+        return parse_iptables_listing(output)
+    raise ValueError("Unknown block method")
+
+
+def parse_ufw_listing(output: str) -> dict:
+    rules = {}
+    for line in output.splitlines():
+        match = UFW_DENY_LINE.match(line)
+        if not match:
+            continue
+        source = match.group("source")
+        if source == "Anywhere":
+            continue
+        rules[source] = (match.group("comment") or "") == RULE_TAG
+    return rules
+
+
+def parse_iptables_listing(output: str) -> dict:
+    rules = {}
+    for line in output.splitlines():
+        try:
+            tokens = shlex.split(line)
+        except ValueError:
+            logger.warning("event=iptables_line_unparseable line=%r", line)
+            continue
+        if "-s" not in tokens or "DROP" not in tokens:
+            continue
+        source = tokens[tokens.index("-s") + 1]
+        source = source.removesuffix("/32").removesuffix("/128")
+        is_tagged = "--comment" in tokens and tokens[tokens.index("--comment") + 1] == RULE_TAG
+        rules[source] = is_tagged
+    return rules
+
+
+def run_firewall_command(cmd: list) -> str:
+    """Run a firewall command and return its stdout.
+
+    Raises FirewallError on non-zero exit, timeout, or missing binary.
+    """
     try:
         result = subprocess.run(
             cmd,
@@ -51,18 +122,7 @@ def run_firewall_command(cmd: list) -> None:
         raise FirewallError(
             f"firewall command failed (exit {result.returncode}): {' '.join(cmd)}: {detail}"
         )
-
-
-def block_ip(ip: str, method="ufw"):
-    """Insert a deny rule. Raises FirewallError if the rule was not installed."""
-    run_firewall_command(build_block_command(ip, method))
-    logger.info("event=firewall_block ip=%s method=%s", ip, method)
-
-
-def unblock_ip(ip: str, method="ufw"):
-    """Remove a deny rule. Raises FirewallError if removal fails."""
-    run_firewall_command(build_unblock_command(ip, method))
-    logger.info("event=firewall_unblock ip=%s method=%s", ip, method)
+    return result.stdout
 
 
 def default_sender_address() -> str:

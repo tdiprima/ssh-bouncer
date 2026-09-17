@@ -9,6 +9,13 @@ from pathlib import Path
 logger = logging.getLogger("sshbouncer.state")
 
 STATE_VERSION = 1
+DRY_RUN_SUFFIX = ".dry-run"
+
+
+def dry_run_state_path(path: str) -> str:
+    """Sibling file for simulated state so a dry run never reads or overwrites production records."""
+    original = Path(path)
+    return str(original.with_name(original.stem + DRY_RUN_SUFFIX + original.suffix))
 
 
 class StateStore:

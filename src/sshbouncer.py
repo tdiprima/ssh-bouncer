@@ -22,8 +22,9 @@ import time
 from config import DEFAULT_CONFIG_PATH, ConfigError, load_config, resolve_auth_log
 from engine import DetectionEngine
 from logfollow import LogFollower
+from notify import EmailNotifier
 from parser import parse_line
-from state import StateStore
+from state import StateStore, dry_run_state_path
 
 logger = logging.getLogger("sshbouncer")
 
@@ -31,6 +32,7 @@ EXIT_OK = 0
 EXIT_CONFIG_ERROR = 2
 EXIT_RUNTIME_ERROR = 3
 EXPIRY_CHECK_INTERVAL_SECONDS = 30
+HOUSEKEEPING_INTERVAL_SECONDS = 300
 LOG_FORMAT = "%(asctime)s level=%(levelname)s component=%(name)s %(message)s"
 
 
@@ -90,6 +92,13 @@ def format_status_table(rows: list) -> str:
     return "\n".join(lines)
 
 
+def state_path_for_mode(config: dict, dry_run: bool) -> str:
+    """Dry-run keeps its own state file so simulated blocks never touch production records."""
+    if dry_run:
+        return dry_run_state_path(config["state_file"])
+    return config["state_file"]
+
+
 def show_status(config: dict) -> int:
     """Static snapshot from the saved state file. Does not touch the firewall."""
     engine = DetectionEngine(config, state_store=None)
@@ -106,10 +115,14 @@ class Daemon:
 
     def __init__(self, config: dict, dry_run: bool):
         self.config = config
-        self.engine = DetectionEngine(config, StateStore(config["state_file"]), dry_run=dry_run)
+        self.notifier = EmailNotifier(config)
+        self.engine = DetectionEngine(
+            config, StateStore(state_path_for_mode(config, dry_run)), dry_run=dry_run, notifier=self.notifier
+        )
         self.stop_requested = False
         self.status_requested = False
         self.last_expiry_check = time.monotonic()
+        self.last_housekeeping = time.monotonic()
 
     def install_signal_handlers(self) -> None:
         signal.signal(signal.SIGTERM, self.handle_stop_signal)
@@ -132,6 +145,7 @@ class Daemon:
         )
         self.engine.restore_state()
         self.install_signal_handlers()
+        self.notifier.start()
 
         follower = LogFollower(auth_log, sleep_fn=self.idle)
         try:
@@ -143,6 +157,7 @@ class Daemon:
         finally:
             follower.close()
             self.engine.save_state()
+            self.notifier.shutdown()
             logger.info("event=shutdown_complete")
         return EXIT_OK
 
@@ -161,6 +176,11 @@ class Daemon:
         if time.monotonic() - self.last_expiry_check >= EXPIRY_CHECK_INTERVAL_SECONDS:
             self.last_expiry_check = time.monotonic()
             self.engine.expire_blocks()
+            self.engine.retry_save_if_needed()
+
+        if time.monotonic() - self.last_housekeeping >= HOUSEKEEPING_INTERVAL_SECONDS:
+            self.last_housekeeping = time.monotonic()
+            self.engine.prune()
 
 
 def main(argv=None) -> int:

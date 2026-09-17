@@ -8,7 +8,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-from state import StateStore  # noqa: E402
+from state import StateStore, dry_run_state_path  # noqa: E402
 
 
 class StateStoreTests(unittest.TestCase):
@@ -55,6 +55,16 @@ class StateStoreTests(unittest.TestCase):
     def test_unwritable_location_returns_false(self):
         store = StateStore("/proc/definitely/not/writable/state.json")
         self.assertFalse(store.save({}, {}))
+
+
+class DryRunPathTests(unittest.TestCase):
+    def test_dry_run_path_is_a_sibling_file(self):
+        self.assertEqual(dry_run_state_path("/var/lib/sshbouncer/state.json"),
+                         "/var/lib/sshbouncer/state.dry-run.json")
+
+    def test_dry_run_path_never_equals_production_path(self):
+        for path in ("state.json", "/tmp/x", "/a/b/state", "/a/b/.hidden"):
+            self.assertNotEqual(dry_run_state_path(path), path)
 
 
 if __name__ == "__main__":

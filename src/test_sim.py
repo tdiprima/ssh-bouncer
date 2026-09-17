@@ -40,6 +40,7 @@ FAKE_LOG = "/tmp/sshbouncer_test_auth.log"
 TEST_CONFIG = "/tmp/sshbouncer_test_config.json"
 TEST_LOG_FILE = "/tmp/sshbouncer_test.log"
 TEST_STATE_FILE = "/tmp/sshbouncer_test_state.json"
+TEST_DRY_RUN_STATE_FILE = "/tmp/sshbouncer_test_state.dry-run.json"
 
 # IPs the scenarios below drive past the threshold (3 failures in 60s).
 EXPECTED_ALERT_IPS = ("192.168.1.100", "203.0.113.5", "198.51.100.7")
@@ -202,7 +203,7 @@ def evaluate_output(output: str, exit_code: int) -> list:
 
 
 def cleanup_test_files() -> None:
-    for path in (FAKE_LOG, TEST_CONFIG, TEST_LOG_FILE, TEST_STATE_FILE):
+    for path in (FAKE_LOG, TEST_CONFIG, TEST_LOG_FILE, TEST_STATE_FILE, TEST_DRY_RUN_STATE_FILE):
         if os.path.isfile(path):
             Path(path).unlink()
 
