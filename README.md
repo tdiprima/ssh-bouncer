@@ -85,6 +85,8 @@ sudo python3 install.py --uninstall
 
 Keeps your config and logs in case you come back. We know you will.
 
-## ⚠ Real talk
+## ⚠️ Real talk
 
 No warranty. Test on a box you don't care about first. If you enable blocking without whitelisting yourself and get locked out, that's on you bestie.
+
+<br>
