@@ -11,7 +11,7 @@ from actions import (
     FirewallError,
     build_block_command,
     build_legacy_unblock_command,
-    build_list_command,
+    build_list_commands,
     build_unblock_command,
     parse_rule_listing,
     run_firewall_command,
@@ -52,8 +52,10 @@ class FirewallLifecycle:
         """Map source IP -> owned (True when the rule carries our tag). Empty in dry-run."""
         if self.dry_run:
             return {}
-        output = self.run(build_list_command(self.method))
-        return parse_rule_listing(output, self.method)
+        rules = {}
+        for command in build_list_commands(self.method):
+            rules.update(parse_rule_listing(self.run(command), self.method))
+        return rules
 
     def remove_owned_rules(self) -> tuple:
         """Delete every tagged rule. Returns (removed_ips, failed_ips).

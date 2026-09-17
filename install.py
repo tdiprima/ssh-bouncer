@@ -118,8 +118,11 @@ def collect_config() -> Dict:
         config["smtp_port"] = int(ask("SMTP port", str(config["smtp_port"])))
         config["smtp_tls"] = ask_yes_no("Use STARTTLS?", False)
         config["smtp_user"] = ask("SMTP username (blank = no auth)", "")
-        print("SMTP password: set SSHBOUNCER_SMTP_PASS in the service environment, "
-              "or add smtp_pass to the config file after install.")
+        if config["smtp_user"] and not config["smtp_tls"]:
+            print("SMTP username requires STARTTLS; enabling it so the password is never sent in clear.")
+            config["smtp_tls"] = True
+        print(f"SMTP password: add smtp_pass to {CONFIG_FILE} (root-only, mode 0600) after install, "
+              "or use a systemd LoadCredential= (see README). Do not use Environment= in the unit.")
 
     return config
 

@@ -1,4 +1,5 @@
 import smtplib
+import ssl
 import subprocess
 import sys
 import unittest
@@ -13,7 +14,7 @@ from actions import (  # noqa: E402
     FirewallError,
     build_block_command,
     build_legacy_unblock_command,
-    build_list_command,
+    build_list_commands,
     build_unblock_command,
     parse_rule_listing,
     run_firewall_command,
@@ -77,14 +78,14 @@ class FirewallCommandTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 builder("1.2.3.4", "pf")
         with self.assertRaises(ValueError):
-            build_list_command("pf")
+            build_list_commands("pf")
         with self.assertRaises(ValueError):
             parse_rule_listing("", "pf")
 
     def test_ip_is_passed_as_argument_not_shell(self):
         hostile = "1.2.3.4; rm -rf /"
         with mock.patch("actions.subprocess.run", return_value=completed(0)) as run:
-            run_firewall_command(build_block_command(hostile, "iptables"))
+            run_firewall_command(build_block_command(hostile, "ufw"))
         self.assertIn(hostile, run.call_args[0][0])
         self.assertNotIn("shell", run.call_args.kwargs)
 
@@ -95,6 +96,24 @@ class FirewallCommandTests(unittest.TestCase):
             build_unblock_command("1.2.3.4", "iptables"),
             ["iptables", "-D", "INPUT", "-s", "1.2.3.4", "-m", "comment", "--comment", RULE_TAG, "-j", "DROP"],
         )
+
+    def test_ipv6_uses_ip6tables_and_ufw_unchanged(self):
+        ipv6 = "2001:db8::1"
+        for builder in (build_block_command, build_unblock_command, build_legacy_unblock_command):
+            self.assertEqual(builder(ipv6, "iptables")[0], "ip6tables", builder.__name__)
+            self.assertEqual(builder("1.2.3.4", "iptables")[0], "iptables", builder.__name__)
+            self.assertEqual(builder(ipv6, "ufw")[0], "ufw", builder.__name__)
+            self.assertIn(ipv6, builder(ipv6, "ufw"))
+
+    def test_iptables_listing_covers_both_families(self):
+        self.assertEqual(build_list_commands("iptables"),
+                         [["iptables", "-S", "INPUT"], ["ip6tables", "-S", "INPUT"]])
+        self.assertEqual(build_list_commands("ufw"), [["ufw", "status", "numbered"]])
+
+    def test_iptables_builders_reject_non_addresses(self):
+        for builder in (build_block_command, build_unblock_command, build_legacy_unblock_command):
+            with self.assertRaises(ValueError):
+                builder("1.2.3.4; rm -rf /", "iptables")
 
     def test_legacy_unblock_has_no_tag(self):
         self.assertEqual(
@@ -115,6 +134,13 @@ class RuleListingParserTests(unittest.TestCase):
     def test_iptables_listing_marks_owned_and_foreign_rules(self):
         rules = parse_rule_listing(IPTABLES_STATUS, "iptables")
         self.assertEqual(rules, {"1.2.3.4": True, "5.6.7.8": False, "9.9.9.9": False})
+
+    def test_ip6tables_listing_is_normalised(self):
+        listing = (
+            "-A INPUT -s 2001:0db8:0000:0000:0000:0000:0000:0001/128 -m comment --comment sshbouncer -j DROP\n"
+            "-A INPUT -s fe80::/10 -j DROP\n"
+        )
+        self.assertEqual(parse_rule_listing(listing, "iptables"), {"2001:db8::1": True})
 
     def test_empty_and_inactive_listings_give_no_rules(self):
         self.assertEqual(parse_rule_listing("", "ufw"), {})
@@ -186,6 +212,40 @@ class SendEmailTests(unittest.TestCase):
             send_email("s", "b", self.config(smtp_tls=True, smtp_user="u", smtp_pass="p"))
         server.starttls.assert_called_once()
         server.login.assert_called_once_with("u", "p")
+
+    def test_starttls_verifies_certificate_and_hostname(self):
+        with mock.patch("actions.smtplib.SMTP") as smtp:
+            server = smtp.return_value.__enter__.return_value
+            self.assertTrue(send_email("s", "b", self.config(smtp_tls=True)))
+        context = server.starttls.call_args.kwargs["context"]
+        self.assertIsInstance(context, ssl.SSLContext)
+        self.assertEqual(context.verify_mode, ssl.CERT_REQUIRED)
+        self.assertTrue(context.check_hostname)
+        self.assertGreaterEqual(context.minimum_version, ssl.TLSVersion.TLSv1_2)
+
+    def assert_no_login_after_tls_failure(self, error):
+        with mock.patch("actions.smtplib.SMTP") as smtp:
+            server = smtp.return_value.__enter__.return_value
+            server.starttls.side_effect = error
+            self.assertFalse(send_email("s", "b", self.config(smtp_tls=True, smtp_user="u", smtp_pass="p")))
+        server.login.assert_not_called()
+        server.sendmail.assert_not_called()
+
+    def test_untrusted_certificate_blocks_login(self):
+        self.assert_no_login_after_tls_failure(
+            ssl.SSLCertVerificationError(1, "certificate verify failed: self signed certificate"))
+
+    def test_hostname_mismatch_blocks_login(self):
+        self.assert_no_login_after_tls_failure(
+            ssl.SSLCertVerificationError(1, "Hostname mismatch, certificate is not valid for 'smtp.example'"))
+
+    def test_server_refusing_starttls_blocks_login(self):
+        self.assert_no_login_after_tls_failure(smtplib.SMTPNotSupportedError("STARTTLS extension not supported"))
+
+    def test_credentials_never_sent_without_tls(self):
+        with mock.patch("actions.smtplib.SMTP") as smtp:
+            self.assertFalse(send_email("s", "b", self.config(smtp_tls=False, smtp_user="u", smtp_pass="p")))
+        smtp.assert_not_called()
 
 
 if __name__ == "__main__":

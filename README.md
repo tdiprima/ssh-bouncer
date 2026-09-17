@@ -20,14 +20,23 @@ The installer asks you a few questions. Vibes for each one:
 | Detection window (seconds) | How long those fails have to happen in. `300` is fine. |
 | Whitelisted IPs/CIDRs | **PUT YOUR OWN IP HERE.** Comma-separated. Single IPs or CIDR ranges like `10.0.0.0/8`. Not doing this = you might lock yourself out. Not a vibe. |
 | Enable IP blocking? | Say `n` the first time. Watch it work before you let it swing. |
-| Block method (ufw/iptables) | Only asked if blocking is on. `ufw` on Ubuntu/Debian, `iptables` on RHEL/Rocky. |
+| Block method (ufw/iptables) | Only asked if blocking is on. `ufw` on Ubuntu/Debian, `iptables` on RHEL/Rocky. IPv6 attackers get blocked too: `ufw` handles both families, `iptables` mode also drives `ip6tables` (ships in the same package). |
 | Block duration (minutes) | Only asked if blocking is on. How long an IP stays blocked. `60` is fine. |
 | Enable email alerts? | `y` if you want emails. It'll ask for your SMTP stuff. |
 | Start service now? | `y` |
 
-If you turned on email with a password, set it as an env var so it isn't chilling in a file:
+If you turned on email with a password, put it in the config file. `/etc/sshbouncer/config.json` is root-only (mode `0600`), so that's already the safe spot:
 
 ```bash
+sudo nano /etc/sshbouncer/config.json    # set "smtp_pass"
+sudo systemctl restart sshbouncer
+```
+
+Prefer to keep it out of the config? Use a systemd credential. The service can read it, other local users cannot:
+
+```bash
+echo -n 'your-app-password' | sudo tee /etc/sshbouncer/smtp_pass >/dev/null
+sudo chmod 0600 /etc/sshbouncer/smtp_pass
 sudo systemctl edit sshbouncer
 ```
 
@@ -35,8 +44,12 @@ Then add:
 
 ```ini
 [Service]
-Environment=SSHBOUNCER_SMTP_PASS=your-app-password
+LoadCredential=smtp_pass:/etc/sshbouncer/smtp_pass
 ```
+
+Do **not** use `Environment=SSHBOUNCER_SMTP_PASS=...` in the unit. systemd exposes unit environment to every local user via `systemctl show`. The env var still works for manual runs from your own shell, that's all it's for.
+
+A username is only accepted together with `"smtp_tls": true`, and the server certificate is verified. No verified TLS, no password leaves the box.
 
 ## Run it
 

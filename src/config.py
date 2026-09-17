@@ -13,6 +13,10 @@ AUTO_AUTH_LOG_CANDIDATES = ("/var/log/auth.log", "/var/log/secure")
 VALID_BLOCK_METHODS = ("ufw", "iptables")
 VALID_LOG_LEVELS = ("DEBUG", "INFO", "WARNING", "ERROR")
 SMTP_PASSWORD_ENV_VAR = "SSHBOUNCER_SMTP_PASS"
+# systemd LoadCredential=smtp_pass:/path exposes the secret only to the service, not to
+# `systemctl show`. The directory comes from CREDENTIALS_DIRECTORY at runtime.
+SYSTEMD_CREDENTIALS_DIR_ENV_VAR = "CREDENTIALS_DIRECTORY"
+SMTP_PASSWORD_CREDENTIAL_NAME = "smtp_pass"
 MAX_PORT = 65535
 
 DEFAULT_CONFIG = {
@@ -77,10 +81,24 @@ def read_config_file(path: str) -> dict:
 
 
 def apply_environment_overrides(config: dict) -> None:
-    """Secrets come from the environment when present. Config file is the fallback."""
-    smtp_password = os.environ.get(SMTP_PASSWORD_ENV_VAR)
+    """Secrets come from a systemd credential, then the environment. Config file is the fallback."""
+    smtp_password = read_systemd_credential(SMTP_PASSWORD_CREDENTIAL_NAME) or os.environ.get(SMTP_PASSWORD_ENV_VAR)
     if smtp_password:
         config["smtp_pass"] = smtp_password
+
+
+def read_systemd_credential(name: str) -> str | None:
+    """Contents of $CREDENTIALS_DIRECTORY/<name>, or None when absent. Unreadable files are errors."""
+    directory = os.environ.get(SYSTEMD_CREDENTIALS_DIR_ENV_VAR)
+    if not directory:
+        return None
+    credential_path = Path(directory) / name
+    if not credential_path.is_file():
+        return None
+    try:
+        return credential_path.read_text(encoding="utf-8").rstrip("\r\n")
+    except OSError as error:
+        raise ConfigError(f"cannot read systemd credential {name}: {error}") from error
 
 
 def validate_config(config: dict) -> None:
@@ -124,6 +142,9 @@ def validate_email_settings(config: dict) -> None:
     port = config.get("smtp_port")
     if not isinstance(port, int) or isinstance(port, bool) or not 1 <= port <= MAX_PORT:
         raise ConfigError(f"smtp_port must be an integer between 1 and {MAX_PORT}")
+
+    if config["smtp_user"] and not config["smtp_tls"]:
+        raise ConfigError("smtp_user is set but smtp_tls is false; credentials are only sent over verified TLS")
 
 
 def parse_whitelist(raw_whitelist) -> list:

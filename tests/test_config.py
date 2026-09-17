@@ -99,6 +99,47 @@ class LoadConfigTests(unittest.TestCase):
             config = load_config(path)
         self.assertEqual(config["smtp_pass"], "from-env")
 
+    def test_smtp_user_without_tls_is_rejected(self):
+        path = write_json(self.tempdir.name, {"email_enabled": True, "email_to": "a@b",
+                                              "smtp_user": "u", "smtp_tls": False})
+        with self.assertRaises(ConfigError) as ctx:
+            load_config(path)
+        self.assertIn("smtp_tls", str(ctx.exception))
+
+    def test_smtp_user_with_tls_is_accepted(self):
+        path = write_json(self.tempdir.name, {"email_enabled": True, "email_to": "a@b",
+                                              "smtp_user": "u", "smtp_tls": True})
+        self.assertEqual(load_config(path)["smtp_user"], "u")
+
+    def test_systemd_credential_wins_over_env_and_file(self):
+        credentials_dir = os.path.join(self.tempdir.name, "creds")
+        os.makedirs(credentials_dir)
+        with open(os.path.join(credentials_dir, "smtp_pass"), "w", encoding="utf-8") as handle:
+            handle.write("from-credential\n")
+        path = write_json(self.tempdir.name, {"smtp_pass": "from-file"})
+        env = {"CREDENTIALS_DIRECTORY": credentials_dir, "SSHBOUNCER_SMTP_PASS": "from-env"}
+        with mock.patch.dict(os.environ, env):
+            self.assertEqual(load_config(path)["smtp_pass"], "from-credential")
+
+    def test_missing_systemd_credential_falls_back(self):
+        empty_dir = os.path.join(self.tempdir.name, "creds")
+        os.makedirs(empty_dir)
+        path = write_json(self.tempdir.name, {"smtp_pass": "from-file"})
+        with mock.patch.dict(os.environ, {"CREDENTIALS_DIRECTORY": empty_dir}, clear=False):
+            os.environ.pop("SSHBOUNCER_SMTP_PASS", None)
+            self.assertEqual(load_config(path)["smtp_pass"], "from-file")
+
+    def test_unreadable_systemd_credential_is_an_error(self):
+        credentials_dir = os.path.join(self.tempdir.name, "creds")
+        os.makedirs(credentials_dir)
+        with open(os.path.join(credentials_dir, "smtp_pass"), "w", encoding="utf-8") as handle:
+            handle.write("x")
+        path = write_json(self.tempdir.name, {})
+        with mock.patch.dict(os.environ, {"CREDENTIALS_DIRECTORY": credentials_dir}), \
+                mock.patch("config.Path.read_text", side_effect=PermissionError("denied")):
+            with self.assertRaises(ConfigError):
+                load_config(path)
+
     def test_log_level_is_normalised(self):
         path = write_json(self.tempdir.name, {"log_level": "debug"})
         self.assertEqual(load_config(path)["log_level"], "DEBUG")

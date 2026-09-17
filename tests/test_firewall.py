@@ -93,9 +93,21 @@ class LifecycleTests(unittest.TestCase):
         self.assertEqual(firewall.remove_owned_rules(), ([], []))
         runner.assert_not_called()
 
-    def test_list_rules_parses_runner_output(self):
-        runner = mock.Mock(return_value="-A INPUT -s 1.2.3.4/32 -m comment --comment sshbouncer -j DROP\n")
-        self.assertEqual(FirewallLifecycle("iptables", runner=runner).list_rules(), {"1.2.3.4": True})
+    def test_list_rules_merges_iptables_and_ip6tables(self):
+        runner = mock.Mock(side_effect=[
+            "-A INPUT -s 1.2.3.4/32 -m comment --comment sshbouncer -j DROP\n",
+            "-A INPUT -s 2001:db8::1/128 -m comment --comment sshbouncer -j DROP\n",
+        ])
+        self.assertEqual(FirewallLifecycle("iptables", runner=runner).list_rules(),
+                         {"1.2.3.4": True, "2001:db8::1": True})
+        self.assertEqual([call[0][0][0] for call in runner.call_args_list], ["iptables", "ip6tables"])
+
+    def test_remove_owned_rules_uses_family_specific_binary(self):
+        runner = mock.Mock(side_effect=[
+            "", "-A INPUT -s 2001:db8::1/128 -m comment --comment sshbouncer -j DROP\n", ""])
+        removed, failed = FirewallLifecycle("iptables", runner=runner).remove_owned_rules()
+        self.assertEqual((removed, failed), (["2001:db8::1"], []))
+        self.assertEqual(runner.call_args_list[-1][0][0][0], "ip6tables")
 
     def test_remove_owned_rules_skips_foreign_and_reports_failures(self):
         listing = (
@@ -103,12 +115,12 @@ class LifecycleTests(unittest.TestCase):
             "-A INPUT -s 5.5.5.5/32 -m comment --comment sshbouncer -j DROP\n"
             "-A INPUT -s 8.8.8.8/32 -j DROP\n"
         )
-        # list, delete 1.2.3.4 ok, delete 5.5.5.5 tagged fails, legacy fails
-        runner = mock.Mock(side_effect=[listing, "", FirewallError("x"), FirewallError("y")])
+        # list v4, list v6, delete 1.2.3.4 ok, delete 5.5.5.5 tagged fails, legacy fails
+        runner = mock.Mock(side_effect=[listing, "", "", FirewallError("x"), FirewallError("y")])
         removed, failed = FirewallLifecycle("iptables", runner=runner).remove_owned_rules()
         self.assertEqual(removed, ["1.2.3.4"])
         self.assertEqual(failed, ["5.5.5.5"])
-        deleted_ips = [call[0][0][4] for call in runner.call_args_list[1:]]
+        deleted_ips = [call[0][0][4] for call in runner.call_args_list[2:]]
         self.assertNotIn("8.8.8.8", deleted_ips)
 
     def test_remove_owned_rules_raises_when_listing_fails(self):

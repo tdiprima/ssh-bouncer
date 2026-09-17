@@ -1,9 +1,11 @@
 # Firewall commands + email. Nothing else. Rule ownership and lifecycle live in firewall.py.
+import ipaddress
 import logging
 import re
 import shlex
 import smtplib
 import socket
+import ssl
 import subprocess
 from email.mime.text import MIMEText
 
@@ -25,12 +27,21 @@ class FirewallError(RuntimeError):
     """Raised when a firewall command fails or cannot be run."""
 
 
+# ufw handles both address families itself; netfilter needs one binary per family.
+IPTABLES_BINARIES = ("iptables", "ip6tables")
+
+
+def iptables_binary_for(ip: str) -> str:
+    """ip6tables for IPv6 addresses, iptables otherwise. Raises ValueError for non-addresses."""
+    return "ip6tables" if ipaddress.ip_address(ip).version == 6 else "iptables"
+
+
 def build_block_command(ip: str, method: str) -> list:
     if method == "ufw":
         return ["ufw", "insert", "1", "deny", "from", ip, "to", "any", "comment", RULE_TAG]
     if method == "iptables":
-        return ["iptables", "-I", "INPUT", "1", "-s", ip, "-m", "comment", "--comment", RULE_TAG,
-                "-j", "DROP"]
+        return [iptables_binary_for(ip), "-I", "INPUT", "1", "-s", ip, "-m", "comment",
+                "--comment", RULE_TAG, "-j", "DROP"]
     raise ValueError("Unknown block method")
 
 
@@ -38,8 +49,8 @@ def build_unblock_command(ip: str, method: str) -> list:
     if method == "ufw":
         return ["ufw", "delete", "deny", "from", ip, "to", "any", "comment", RULE_TAG]
     if method == "iptables":
-        return ["iptables", "-D", "INPUT", "-s", ip, "-m", "comment", "--comment", RULE_TAG,
-                "-j", "DROP"]
+        return [iptables_binary_for(ip), "-D", "INPUT", "-s", ip, "-m", "comment",
+                "--comment", RULE_TAG, "-j", "DROP"]
     raise ValueError("Unknown block method")
 
 
@@ -48,15 +59,16 @@ def build_legacy_unblock_command(ip: str, method: str) -> list:
     if method == "ufw":
         return ["ufw", "delete", "deny", "from", ip, "to", "any"]
     if method == "iptables":
-        return ["iptables", "-D", "INPUT", "-s", ip, "-j", "DROP"]
+        return [iptables_binary_for(ip), "-D", "INPUT", "-s", ip, "-j", "DROP"]
     raise ValueError("Unknown block method")
 
 
-def build_list_command(method: str) -> list:
+def build_list_commands(method: str) -> list:
+    """Every command whose combined output describes all rules for this method."""
     if method == "ufw":
-        return ["ufw", "status", "numbered"]
+        return [["ufw", "status", "numbered"]]
     if method == "iptables":
-        return ["iptables", "-S", "INPUT"]
+        return [[binary, "-S", "INPUT"] for binary in IPTABLES_BINARIES]
     raise ValueError("Unknown block method")
 
 
@@ -75,8 +87,8 @@ def parse_ufw_listing(output: str) -> dict:
         match = UFW_DENY_LINE.match(line)
         if not match:
             continue
-        source = match.group("source")
-        if source == "Anywhere":
+        source = normalize_rule_source(match.group("source"))
+        if source is None:
             continue
         rules[source] = (match.group("comment") or "") == RULE_TAG
     return rules
@@ -92,11 +104,21 @@ def parse_iptables_listing(output: str) -> dict:
             continue
         if "-s" not in tokens or "DROP" not in tokens:
             continue
-        source = tokens[tokens.index("-s") + 1]
-        source = source.removesuffix("/32").removesuffix("/128")
+        source = normalize_rule_source(tokens[tokens.index("-s") + 1])
+        if source is None:
+            continue
         is_tagged = "--comment" in tokens and tokens[tokens.index("--comment") + 1] == RULE_TAG
         rules[source] = is_tagged
     return rules
+
+
+def normalize_rule_source(source: str) -> str | None:
+    """Canonical address for a single-host rule source; None for networks, 'Anywhere', or junk."""
+    host = source.removesuffix("/32").removesuffix("/128")
+    try:
+        return str(ipaddress.ip_address(host))
+    except ValueError:
+        return None
 
 
 def run_firewall_command(cmd: list) -> str:
@@ -134,6 +156,12 @@ def send_email(subject: str, body: str, config: dict) -> bool:
     if not config.get("email_enabled"):
         return False
 
+    if config.get("smtp_user") and not config.get("smtp_tls"):
+        # Config validation already rejects this; keep the guard so a hand-built config cannot
+        # push a password over cleartext.
+        logger.error("event=email_refused reason=credentials_without_tls server=%s", config["smtp_server"])
+        return False
+
     msg = MIMEText(body)
     msg["Subject"] = subject
     msg["From"] = config.get("email_from") or default_sender_address()
@@ -144,7 +172,8 @@ def send_email(subject: str, body: str, config: dict) -> bool:
             config["smtp_server"], config["smtp_port"], timeout=SMTP_TIMEOUT_SECONDS
         ) as srv:
             if config.get("smtp_tls"):
-                srv.starttls()
+                # Default context verifies the chain and hostname; smtplib's implicit one does neither.
+                srv.starttls(context=ssl.create_default_context())
             if config.get("smtp_user"):
                 srv.login(config["smtp_user"], config["smtp_pass"])
             srv.sendmail(msg["From"], [msg["To"]], msg.as_string())

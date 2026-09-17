@@ -17,6 +17,7 @@ from actions import FirewallError  # noqa: E402
 from firewall import FirewallLifecycle  # noqa: E402
 
 TAGGED_RULE = "-A INPUT -s 1.2.3.4/32 -m comment --comment sshbouncer -j DROP\n"
+NO_V6_RULES = ""  # iptables mode lists ip6tables right after iptables
 STATE_BYTES = json.dumps({"version": 1, "blocks": {"1.2.3.4": {
     "blocked_at": "2026-01-01T00:00:00", "expires_at": "2026-01-01T01:00:00", "method": "iptables"}},
     "tracker": {}}).encode()
@@ -82,16 +83,16 @@ class UninstallTests(unittest.TestCase):
         self.assertIn(str(self.state_dir), sys.stderr.getvalue())
 
     def test_uninstall_preserves_state_on_deletion_failure(self):
-        # list ok, tagged delete fails, legacy delete fails
-        runner = mock.Mock(side_effect=[TAGGED_RULE, FirewallError("tagged"), FirewallError("legacy")])
+        # list v4, list v6, tagged delete fails, legacy delete fails
+        runner = mock.Mock(side_effect=[TAGGED_RULE, NO_V6_RULES, FirewallError("tagged"), FirewallError("legacy")])
         self.run_uninstall_with(runner)
-        self.assertEqual(runner.call_count, 3)
+        self.assertEqual(runner.call_count, 4)
         self.assert_state_preserved()
         self.assert_program_files_removed()
         self.assertIn("could not remove iptables rule for 1.2.3.4", sys.stderr.getvalue())
 
     def test_uninstall_removes_state_after_clean_rule_removal(self):
-        runner = mock.Mock(side_effect=[TAGGED_RULE, ""])
+        runner = mock.Mock(side_effect=[TAGGED_RULE, NO_V6_RULES, ""])
         self.run_uninstall_with(runner)
         self.assertFalse(self.state_dir.exists())
         self.assert_program_files_removed()
@@ -99,9 +100,9 @@ class UninstallTests(unittest.TestCase):
 
     def test_uninstall_removes_state_when_no_owned_rules_exist(self):
         foreign_only = "-A INPUT -s 8.8.8.8/32 -j DROP\n"
-        runner = mock.Mock(return_value=foreign_only)
+        runner = mock.Mock(side_effect=[foreign_only, NO_V6_RULES])
         self.run_uninstall_with(runner)
-        runner.assert_called_once()
+        self.assertEqual(runner.call_count, 2)
         self.assertFalse(self.state_dir.exists())
 
     def test_uninstall_refuses_without_root(self):
@@ -130,10 +131,11 @@ class RemoveFirewallRulesTests(unittest.TestCase):
         self.assertFalse(self.remove_with(mock.Mock(side_effect=FirewallError("boom"))))
 
     def test_deletion_failure_reports_incomplete(self):
-        self.assertFalse(self.remove_with(mock.Mock(side_effect=[TAGGED_RULE, FirewallError("a"), FirewallError("b")])))
+        self.assertFalse(self.remove_with(
+            mock.Mock(side_effect=[TAGGED_RULE, NO_V6_RULES, FirewallError("a"), FirewallError("b")])))
 
     def test_clean_removal_reports_complete(self):
-        self.assertTrue(self.remove_with(mock.Mock(side_effect=[TAGGED_RULE, ""])))
+        self.assertTrue(self.remove_with(mock.Mock(side_effect=[TAGGED_RULE, NO_V6_RULES, ""])))
 
     def test_no_firewall_tools_installed_reports_complete(self):
         runner = mock.Mock()

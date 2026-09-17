@@ -397,6 +397,58 @@ class PruneTests(unittest.TestCase):
         self.assertEqual(store.save.call_args[0][1], {})
 
 
+class IPv6Tests(unittest.TestCase):
+    ATTACKER = "2001:db8::1"
+
+    def test_ipv6_threshold_triggers_block(self):
+        clock = FakeClock()
+        firewall = FakeFirewall(method="iptables")
+        engine = make_engine(clock, firewall=firewall, block_enabled=True, block_method="iptables")
+        engine.process_event(failure(self.ATTACKER))
+        self.assertEqual(firewall.block_calls, [])
+        engine.process_event(failure(self.ATTACKER))
+        self.assertEqual(firewall.block_calls, [self.ATTACKER])
+        self.assertIn(self.ATTACKER, engine.blocked)
+
+    def test_ipv6_whitelist_cidr_is_honoured(self):
+        engine = make_engine(FakeClock(), whitelist=parse_whitelist(["2001:db8::/32", "::1"]))
+        self.assertTrue(engine.is_whitelisted("2001:db8:ffff::9"))
+        self.assertTrue(engine.is_whitelisted("::1"))
+        self.assertFalse(engine.is_whitelisted("2001:db9::1"))
+        self.assertFalse(engine.is_whitelisted("1.2.3.4"))
+
+    def test_ipv6_block_expires_and_unblocks(self):
+        clock = FakeClock()
+        firewall = FakeFirewall(method="iptables")
+        engine = make_engine(clock, firewall=firewall, block_enabled=True, block_method="iptables")
+        for _ in range(2):
+            engine.process_event(failure(self.ATTACKER))
+        clock.advance(minutes=61)
+        self.assertEqual(engine.expire_blocks(), [self.ATTACKER])
+        self.assertEqual(firewall.unblock_calls, [self.ATTACKER])
+        self.assertNotIn(self.ATTACKER, engine.blocked)
+
+    def test_real_lifecycle_routes_ipv6_to_ip6tables(self):
+        runner = mock.Mock(return_value="")
+        engine = make_engine(FakeClock(), firewall=FirewallLifecycle("iptables", runner=runner),
+                             block_enabled=True, block_method="iptables")
+        for _ in range(2):
+            engine.process_event(failure(self.ATTACKER))
+        self.assertEqual(runner.call_args[0][0][0], "ip6tables")
+        self.assertIn(self.ATTACKER, runner.call_args[0][0])
+
+    def test_ipv6_rule_is_reconciled_on_restore(self):
+        clock = FakeClock()
+        firewall = FakeFirewall(method="iptables", rules={self.ATTACKER: True})
+        store = mock.Mock()
+        store.load.return_value = {"blocks": {}, "tracker": {}}
+        store.save.return_value = True
+        engine = make_engine(clock, firewall=firewall, state_store=store,
+                             block_enabled=True, block_method="iptables")
+        engine.restore_state()
+        self.assertIn(self.ATTACKER, engine.blocked)
+
+
 class StatusTests(unittest.TestCase):
     def test_status_rows_show_recent_failures_and_block(self):
         clock = FakeClock()
