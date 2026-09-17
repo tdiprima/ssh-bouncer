@@ -111,9 +111,11 @@ class LifecycleTests(unittest.TestCase):
         deleted_ips = [call[0][0][4] for call in runner.call_args_list[1:]]
         self.assertNotIn("8.8.8.8", deleted_ips)
 
-    def test_remove_owned_rules_when_listing_fails(self):
+    def test_remove_owned_rules_raises_when_listing_fails(self):
         runner = mock.Mock(side_effect=FirewallError("ufw: command not found"))
-        self.assertEqual(FirewallLifecycle("ufw", runner=runner).remove_owned_rules(), ([], []))
+        with self.assertRaises(FirewallError):
+            FirewallLifecycle("ufw", runner=runner).remove_owned_rules()
+        runner.assert_called_once()
 
 
 if __name__ == "__main__":

@@ -1,5 +1,6 @@
 import sys
 import threading
+import time
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -73,6 +74,58 @@ class EmailNotifierTests(unittest.TestCase):
 
     def test_shutdown_before_start_is_safe(self):
         EmailNotifier(config(), sender=mock.Mock()).shutdown()
+
+    def test_shutdown_timeout_with_full_queue(self):
+        release = threading.Event()
+        started = threading.Event()
+
+        def blocked_sender(**_):
+            started.set()
+            release.wait(10)
+            return True
+
+        notifier = EmailNotifier(config(), max_queue_size=2, sender=blocked_sender)
+        notifier.start()
+        # Cleanup runs last-in-first-out: release the sender, hand the worker its sentinel, then join.
+        self.addCleanup(notifier.worker.join, 5)
+        self.addCleanup(notifier.queue.put, notifier.stop_sentinel, True, 2)
+        self.addCleanup(release.set)
+
+        notifier.enqueue("in-flight", "b")
+        self.assertTrue(started.wait(2))
+        notifier.enqueue("queued-1", "b")
+        notifier.enqueue("queued-2", "b")
+        self.assertFalse(notifier.enqueue("overflow", "b"))
+        self.assertTrue(notifier.queue.full())
+
+        timeout = 0.5
+        began = time.monotonic()
+        notifier.shutdown(timeout=timeout)
+        elapsed = time.monotonic() - began
+        self.assertLess(elapsed, timeout + 1.0, f"shutdown blocked for {elapsed:.2f}s")
+        self.assertTrue(notifier.worker.is_alive())
+
+    def test_shutdown_drains_queue_when_sender_recovers_in_time(self):
+        release = threading.Event()
+        delivered = []
+
+        def slow_first_sender(**kwargs):
+            delivered.append(kwargs["subject"])
+            if len(delivered) == 1:
+                release.wait(5)
+            return True
+
+        notifier = EmailNotifier(config(), max_queue_size=2, sender=slow_first_sender)
+        notifier.start()
+        self.addCleanup(release.set)
+        notifier.enqueue("first", "b")
+        time.sleep(0.1)
+        notifier.enqueue("second", "b")
+        notifier.enqueue("third", "b")
+        threading.Timer(0.2, release.set).start()
+        notifier.shutdown(timeout=5)
+        self.assertFalse(notifier.worker.is_alive())
+        self.assertEqual(delivered, ["first", "second", "third"])
 
 
 if __name__ == "__main__":

@@ -3,11 +3,13 @@ import os
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from datetime import datetime, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
+import state  # noqa: E402
 from state import StateStore, dry_run_state_path  # noqa: E402
 
 
@@ -55,6 +57,47 @@ class StateStoreTests(unittest.TestCase):
     def test_unwritable_location_returns_false(self):
         store = StateStore("/proc/definitely/not/writable/state.json")
         self.assertFalse(store.save({}, {}))
+
+    def seed_valid_state(self):
+        now = datetime(2026, 1, 1, 12, 0, 0)
+        blocks = {"1.2.3.4": {"blocked_at": now, "expires_at": now + timedelta(hours=1), "method": "ufw"}}
+        self.assertTrue(self.store.save(blocks, {}))
+        return blocks, Path(self.path).read_bytes()
+
+    def temp_files(self):
+        return [name for name in os.listdir(os.path.dirname(self.path)) if name.endswith(".tmp")]
+
+    def assert_previous_state_intact(self, blocks, original_bytes):
+        self.assertEqual(Path(self.path).read_bytes(), original_bytes)
+        self.assertEqual(self.store.load()["blocks"], blocks)
+        self.assertEqual(self.temp_files(), [])
+
+    def test_replace_failure_preserves_previous_state(self):
+        blocks, original = self.seed_valid_state()
+        with mock.patch.object(state.os, "replace", side_effect=OSError("disk full")):
+            self.assertFalse(self.store.save({}, {"9.9.9.9": [datetime(2026, 1, 2)]}))
+        self.assert_previous_state_intact(blocks, original)
+
+    def test_write_failure_after_temp_creation_preserves_previous_state(self):
+        blocks, original = self.seed_valid_state()
+        with mock.patch.object(state.os, "chmod", side_effect=OSError("read-only")):
+            self.assertFalse(self.store.save({}, {}))
+        self.assert_previous_state_intact(blocks, original)
+
+    def test_failed_first_save_leaves_no_partial_file(self):
+        with mock.patch.object(state.os, "replace", side_effect=OSError("disk full")):
+            self.assertFalse(self.store.save({}, {}))
+        self.assertFalse(os.path.exists(self.path))
+        self.assertEqual(self.temp_files(), [])
+        self.assertEqual(self.store.load(), {"blocks": {}, "tracker": {}})
+
+    def test_save_succeeds_after_transient_failure(self):
+        blocks, _ = self.seed_valid_state()
+        with mock.patch.object(state.os, "replace", side_effect=OSError("transient")):
+            self.assertFalse(self.store.save({}, {}))
+        self.assertTrue(self.store.save({}, {}))
+        self.assertEqual(self.store.load()["blocks"], {})
+        self.assertEqual(self.temp_files(), [])
 
 
 class DryRunPathTests(unittest.TestCase):

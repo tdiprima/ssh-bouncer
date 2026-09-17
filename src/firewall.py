@@ -56,12 +56,16 @@ class FirewallLifecycle:
         return parse_rule_listing(output, self.method)
 
     def remove_owned_rules(self) -> tuple:
-        """Delete every tagged rule. Returns (removed_ips, failed_ips)."""
+        """Delete every tagged rule. Returns (removed_ips, failed_ips).
+
+        Raises FirewallError when the rules cannot be listed: an empty result would look like a
+        clean firewall and let callers discard records for rules that may still be installed.
+        """
         try:
             rules = self.list_rules()
         except FirewallError as error:
             logger.error("event=firewall_list_failed method=%s error=%s", self.method, error)
-            return [], []
+            raise
 
         removed = []
         failed = []

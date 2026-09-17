@@ -2,6 +2,7 @@
 import logging
 import queue
 import threading
+import time
 
 from actions import send_email
 
@@ -61,7 +62,12 @@ class EmailNotifier:
         """Let queued alerts drain, then stop the worker. Logs what could not be delivered in time."""
         if not self.worker.is_alive():
             return
-        self.queue.put(self.stop_sentinel)
-        self.worker.join(timeout)
+        deadline = time.monotonic() + timeout
+        # A full queue behind a stalled sender would block a plain put() forever.
+        try:
+            self.queue.put(self.stop_sentinel, timeout=timeout)
+        except queue.Full:
+            logger.warning("event=email_shutdown_queue_full pending=%d", self.queue.qsize())
+        self.worker.join(max(0.0, deadline - time.monotonic()))
         if self.worker.is_alive():
             logger.warning("event=email_shutdown_timeout pending=%d", self.queue.qsize())

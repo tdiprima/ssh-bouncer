@@ -219,7 +219,12 @@ def remove_firewall_rules() -> bool:
     for method in ("ufw", "iptables"):
         if shutil.which(method) is None:
             continue
-        removed, failed = FirewallLifecycle(method).remove_owned_rules()
+        try:
+            removed, failed = FirewallLifecycle(method).remove_owned_rules()
+        except Exception as error:  # FirewallError lives in the dynamically loaded module
+            print(f"WARNING: could not list {method} rules: {error}", file=sys.stderr)
+            all_removed = False
+            continue
         for ip in removed:
             print(f"Removed {method} rule for {ip}")
         for ip in failed:
